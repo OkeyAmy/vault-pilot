@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.env
+__pycache__/
+*.pyc
+epochs.log
+epochs.pid
+receipts/**/*.json
+!receipts/.gitkeep
+leaderboard.html
+leaderboard.json
+benchmark_results.json
+*.log
+.DS_Store
+
+# UI fork — has its own git history / node_modules; ignore build output only
+ui/node_modules/
+ui/dist/

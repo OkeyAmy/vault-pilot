@@ -1,0 +1,34 @@
+# Treasury allocation policy. Every constraint here is enforced twice:
+# once as instructions to the model, once by the deterministic guard chain
+# in src/reasoning/guard-chain.ts (which is authoritative).
+policy_version: 1
+
+# No single vault may hold more than this fraction of total equity.
+max_allocation_per_vault: 0.4
+
+# Don't rebalance unless the best available vault beats the current weighted
+# yield by at least this many basis points. Prevents churn for no gain.
+min_rebalance_spread_bps: 15
+
+# Sum of all allocations may not exceed this (1.0 = fully invested, no leverage).
+gross_cap: 1.0
+
+# Pinned vault set. poolId is the live yield-source identifier; APY and TVL
+# for each vault are fetched live at every epoch.
+vaults:
+  - vaultId: "buidl"
+    label: "BlackRock USD Institutional Digital Liquidity"
+    assetClass: "tokenized-treasury"
+    poolId: "b663ca59-c7e6-4435-ae4a-28d339ce6a15"
+  - vaultId: "usdy"
+    label: "Ondo US Dollar Yield"
+    assetClass: "tokenized-treasury"
+    poolId: "ac61ee82-2fe4-4f9b-a9cd-7fb33f598859"
+  - vaultId: "maple-usdc"
+    label: "Maple USDC"
+    assetClass: "private-credit"
+    poolId: "43641cf5-a92e-416b-bce9-27113d3c0db6"
+  - vaultId: "centrifuge-usds"
+    label: "Centrifuge USDS"
+    assetClass: "structured-credit"
+    poolId: "ff1bb959-d160-4906-bad2-d3e37a1e92e8"
