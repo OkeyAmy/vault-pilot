@@ -3,136 +3,237 @@
 </p>
 
 <p align="center">
-  <b>A treasury agent that decides where money should sit, proves it decided before it knew the outcome,<br />
-  and cannot be talked into breaking its own rules.</b>
+  <b>An autonomous RWA treasury agent that decides where capital should sit —<br />
+  and proves it decided before it knew the outcome.</b>
 </p>
 
 <p align="center">
   SERV Hackathon Edition 01 · <b>RWA Vaults track</b> · partner: IXS Finance
 </p>
 
+> *"Your agent says it made good calls. How would I know it didn't write that log afterwards?"*
+
 ---
 
-## What this is, in plain terms
+## The idea in one minute
 
-Say you hold $1,000,000 of a company's cash. You can park it in tokenized
-treasury bills at 3.8%, or private credit at 5.2%. The rates move daily. Someone
-has to keep deciding, and then justify each decision to whoever owns the money.
+You hold a company's idle cash. Tokenized treasury bills pay 3.8%. Private credit
+pays 5.2% but can default. The rates move daily, someone has to keep choosing,
+and that someone has to justify every choice to whoever owns the money.
 
-VAULT-PILOT does that on its own, every epoch, forever. It reads what the vaults
-are actually paying right now, thinks through the trade-off, moves the
-allocation, and writes down what it did and why.
+VAULT-PILOT does that on its own clock, forever. It reads what vaults are
+actually paying right now, weighs yield against risk, moves the allocation, and
+writes down what it did and why.
 
-The part that matters is the last one.
+The interesting part is the proof.
 
-## The problem with an AI that manages money
+Any agent can produce a log claiming good decisions. You cannot tell afterwards
+whether it was written honestly at the time or assembled once the results were
+in. So every decision here is fingerprinted, and the fingerprint is published to
+a public blockchain **immediately — before anyone knows how it turns out.**
 
-Any agent can produce a log saying it made good decisions. You cannot tell,
-afterwards, whether that log was written honestly at the time or assembled later
-once the results were known. A convincing track record is easy to fake.
-
-So every decision this agent makes gets fingerprinted, and the fingerprint is
-published to a public blockchain **immediately, before anyone knows how the
-decision turns out.**
-
-That timestamp is the whole product. It converts *"trust our logs"* into
-*"check the chain yourself"*:
+That timestamp is the product. It turns *"trust our logs"* into *"check the
+chain yourself"*:
 
 ```bash
 python3 scripts/verify.py --all --rpc
 ```
 
-Anyone can run that. It recomputes every fingerprint, fetches the matching
-transaction, and compares them byte for byte. If a single number in a single
-receipt were edited afterwards, the fingerprints would stop matching and the
-check would fail loudly.
-
-A log asks you to trust the author. A receipt anchored in a block does not.
+No dependencies, no account. It recomputes every fingerprint, fetches the
+matching transaction, and compares byte for byte. Edit one number in one receipt
+afterwards and the check fails loudly.
 
 ---
 
-## Try it
+## Architecture
+
+```
+                         ┌──────────────────────────┐
+                         │         Browser          │
+                         │  tournament · receipts   │
+                         │        · policy          │
+                         └────────────┬─────────────┘
+                                      │  JSON over HTTP
+                         ┌────────────┴─────────────┐
+                         │     API  (loopback)      │
+                         │  /preflight  /leaderboard│
+                         │  /receipts   /yields     │
+                         │  /models     /policy     │
+                         └────────────┬─────────────┘
+                                      │
+                         ┌────────────┴─────────────┐
+                         │        SCHEDULER         │
+                         │  decides on its own      │
+                         │  clock; never overlaps   │
+                         │  a run already in flight │
+                         └────────────┬─────────────┘
+                                      │  one epoch
+              ┌───────────────────────┴───────────────────────┐
+              │                 EPOCH RUNNER                  │
+              └───┬───────────┬───────────┬───────────┬───────┘
+                  │           │           │           │
+            ① READ      ② REASON     ③ GUARD     ④ RECORD
+                  │           │           │           │
+    ┌─────────────┴──┐  ┌─────┴──────┐  ┌─┴────────┐ ┌┴──────────────┐
+    │ IXS vault      │  │ SERV       │  │ policy   │ │ receipt       │
+    │ ERC-4626 read  │  │ N arms,    │  │ enforced │ │ pre/post,     │
+    │ convertTo      │  │ identical  │  │ in code: │ │ rationale,    │
+    │ Assets()       │  │ snapshot,  │  │ caps,    │ │ confidence,   │
+    │ on BNB Chain   │  │ forced     │  │ unknown  │ │ cost, guards  │
+    ├────────────────┤  │ submit_    │  │ vaults,  │ └┬──────────────┘
+    │ public yield   │  │ decision   │  │ NaN,     │  │
+    │ index: BUIDL,  │  │ tool call  │  │ negative │  │ SHA-256
+    │ USDY, Maple,   │  └─────┬──────┘  └─┬────────┘  │
+    │ Centrifuge     │        │           │           │
+    └────────────────┘        │           │      ┌────┴──────────────┐
+                              │           │      │   ⑤ ANCHOR        │
+                     ┌────────┴───┐  violation   │ zero-value        │
+                     │ gpt-5.6-   │  → hold      │ self-send,        │
+                     │ luna       │  previous    │ hash as calldata  │
+                     │ + shadow   │  allocation  │                   │
+                     │ claude-    │              │ block timestamp = │
+                     │ haiku-4.5  │              │ proof of          │
+                     │ gemini-... │              │ precedence        │
+                     └────────────┘              └────┬──────────────┘
+                                                      │
+                                                      ▼
+                                            ┌──────────────────┐
+                                            │    verify.py     │
+                                            │  stdlib only     │
+                                            │  recompute hash  │
+                                            │  fetch tx        │
+                                            │  compare bytes   │
+                                            └──────────────────┘
+
+    ─────────────────────────────────────────────────────────────────
+     SETTLEMENT (opt-in, manual, real funds — the scheduler cannot)
+     pnpm settle deposit N  →  ERC-4626 deposit into the IXS vault
+    ─────────────────────────────────────────────────────────────────
+```
+
+---
+
+## Getting started
+
+### Prerequisites
+
+- Node 20+ with pnpm
+- Python 3.9+ (verification only — standard library, nothing to install)
+- One API key for an OpenAI-compatible reasoning endpoint
+
+### Run it
 
 ```bash
 pnpm install
-cp .env.example .env     # add one API key
+cp .env.example .env     # add SERV_API_KEY
 pnpm dev                 # agent + interface, one command
 ```
 
 Open <http://localhost:5173>. The agent starts thinking within seconds and keeps
-going on its own. You are not required to press anything — the button exists
-only if you want an extra run immediately.
+going. You are not required to press anything.
 
-| | |
-|---|---|
-| interface | <http://localhost:5173> |
-| API | <http://127.0.0.1:8787> |
-| how often it decides | `EPOCH_INTERVAL_SECONDS` (default 1 hour) |
-| stop it deciding | `EPOCH_SCHEDULER=off` |
+If something is missing — no key, unfunded wallet — the interface says so in
+plain language *before* running, rather than failing halfway through.
 
-If something is missing — no API key, unfunded wallet — the interface says so
-in plain language before you run anything, rather than failing halfway through.
+### Enable onchain proof
+
+```bash
+pnpm wallet:new          # generates a throwaway anchoring key
+                         # fund the printed address with testnet gas
+pnpm wallet:status       # confirms balance and chain
+```
+
+The anchoring wallet only ever signs zero-value transactions carrying a hash.
+It never holds treasury capital.
 
 ---
 
-## How one decision works
+## How one decision is made
 
-**1 · Look at what the vaults are actually paying.**
-Not a cached table. The IXS vault is read straight off BNB Chain by asking the
-contract what one share is currently worth. The others come from a public yield
-index. Nothing here is invented — there is no synthetic data anywhere in this
-project.
+**① Read what vaults actually pay.** The IXS vault is read straight off BNB
+Chain — asking the contract what one share is worth. The rest come from a public
+yield index. Nothing is invented; there is no synthetic data in this project.
 
-**2 · Think it through.**
-Each model gets the same numbers and the same instructions, and must answer in
-a fixed form: target allocation, rationale, confidence, risk score. It is asked
-to weigh three things a naive optimiser would ignore:
+**② Reason.** Every arm gets identical numbers and must answer in a fixed shape:
+target allocation, rationale, confidence, risk score. It is asked to weigh three
+things a naive optimiser ignores:
 
-- *credit risk* — private credit pays more because it can default
-- *concentration* — a vault holding $656 total cannot absorb $200,000
-- *uncertainty* — a new vault has no track record yet, and is told so honestly
-  rather than being handed a fake 0%
+- **credit risk** — private credit pays more because it can default
+- **concentration** — a vault holding $656 cannot absorb $200,000
+- **uncertainty** — a new vault has no track record, and is told so honestly
+  rather than handed a fake 0%
 
-**3 · Check it against the rules.**
-The policy — no more than 40% in one vault, never more than fully invested,
-don't churn for less than 15 basis points — is enforced twice. Once as
-instructions to the model, and again in code afterwards.
+**③ Check against the rules.** The policy is enforced twice: once as
+instructions, once in code afterwards. The second is authoritative.
 
-The second one is the real one. **A model cannot argue with it.** High
-confidence is not a credential. If a decision breaks a rule it is rejected, the
-previous allocation stands, and the receipt records exactly what was attempted.
-Failed attempts are kept, not hidden.
+> **A model cannot argue with the guard chain.** Confidence 0.99 is not a
+> credential. A rejected decision holds the previous allocation, and the receipt
+> records exactly what was attempted. Failed attempts are kept, not hidden.
 
-**4 · Write the receipt and anchor it.**
-Before/after allocation, the yields it saw, its reasoning, what it cost, whether
-the guards passed. Then the fingerprint goes onchain.
+**④ Record.** Before/after allocation, observed yields, reasoning, cost, guard
+verdict.
+
+**⑤ Anchor.** The fingerprint goes onchain, before the outcome exists.
 
 ---
 
 ## Why several models at once
 
-Four or five models run the same decision on the same data every epoch. Not to
-crown a winner, but because *disagreement is the interesting signal.*
+Arms run the same decision on the same data every epoch — not to crown a winner,
+but because **disagreement is the signal.** One real epoch:
 
-A recent epoch, same inputs:
-
-> **nemotron-super** kept 20% in the new IXS vault and moved toward the
+> **nemotron-super** kept 20% in the new IXS vault and moved toward
 > higher-yielding private credit. Risk score 0.6.
 >
-> **nemotron-ultra** cut that vault to 5%, reasoning that *"TVL of only $656,
-> implying >30% ownership concentration and zero observed yield history"* made
-> it a liquidity risk regardless of the headline rate. Risk score 0.35.
+> **nemotron-ultra** cut it to 5%: *"TVL of only $656, implying >30% ownership
+> concentration and zero observed yield history"* — a liquidity risk regardless
+> of headline rate. Risk score 0.35.
 
-Neither is obviously wrong. That is the point — you can see how differently
-models weigh risk when the answer is not obvious, and every one of those
-judgements is on the record.
+Neither is obviously wrong. You can watch how differently models weigh risk when
+the answer is not obvious, and every judgement is on the record.
 
-The leaderboard ranks by yield captured, but shows cost per decision and
-rule-compliance beside it. An agent that earns more by breaking rules more often
-is not better, and the table refuses to hide that.
+The leaderboard ranks by yield captured but shows **cost per decision** and
+**rule-compliance** beside it. An agent that earns more by breaking rules more
+often is not better, and the table refuses to hide that.
 
-Adding models is a config line, not a code change. `/api/models` lists every
-model the endpoint will actually serve.
+---
+
+## API
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/health` | Liveness and whether anchoring is on |
+| `GET` | `/api/preflight` | What is configured, what blocks a run |
+| `GET` | `/api/policy` | Allocation rules, vault set, active arms |
+| `GET` | `/api/yields` | Live APY and TVL per vault |
+| `GET` | `/api/receipts` | Signed receipt log, optionally `?model=` |
+| `GET` | `/api/leaderboard` | Arm rankings |
+| `GET` | `/api/models` | Models the endpoint serves, `?free=true` |
+| `GET` | `/api/epoch/status` | Current run, step log, next scheduled run |
+| `POST` | `/api/epoch/run` | Extra epoch on demand (needs `OPERATOR_TOKEN`) |
+
+The API binds to loopback and names a single allowed UI origin. The only
+state-changing route requires a token and is closed unless one is set — the
+scheduler is the normal driver, so nothing is lost by keeping it shut.
+
+## Environment
+
+| Variable | Default | Description |
+|---|---|---|
+| `SERV_API_KEY` | — | Key for the reasoning endpoint |
+| `SERV_BASE_URL` | `inference-api.openserv.ai/v1` | Any OpenAI-compatible endpoint |
+| `TOURNAMENT_MODELS` | 4 arms | `id:model:shadow:inPrice:outPrice`, comma-separated |
+| `SERV_TOOLS` | auto | Force `serv_*` tool support `on`/`off` |
+| `EPOCH_INTERVAL_SECONDS` | `3600` | How often it decides (floor 30) |
+| `EPOCH_SCHEDULER` | on | `off` stops epochs, API stays up |
+| `TREASURY_EQUITY_USD` | `1000000` | Notional treasury size |
+| `ANCHOR_PRIVATE_KEY` | — | Enables onchain anchoring |
+| `ANCHOR_CHAIN_ID` | `84532` | 84532 / 11155111 / 421614 / 97 |
+| `SETTLEMENT_PRIVATE_KEY` | — | Enables **real** IXS settlement |
+| `SETTLEMENT_MAX_PER_TX` | `10` | Ceiling per settlement transaction |
+| `OPERATOR_TOKEN` | — | Required for manual epoch triggering |
+| `API_HOST` / `API_PORT` | `127.0.0.1` / `8787` | API bind |
+| `UI_ORIGIN` | `localhost:5173` | Allowed browser origin |
 
 ---
 
@@ -141,72 +242,93 @@ model the endpoint will actually serve.
 > **The capital is notional. The yields, the reasoning, the rule enforcement,
 > and the timestamps are real.**
 
-`TREASURY_EQUITY_USD` is a number, not a funded account. A receipt saying
-`settlement_mode: "accounting"` means no tokens moved — it does **not** mean the
-data was fake.
+`TREASURY_EQUITY_USD` is a number, not a funded account. `settlement_mode:
+"accounting"` means no tokens moved — it does **not** mean the data was fake.
 
-**Real settlement is available and works.** The IXS vault accepts deposits from
-anyone — no permission, no KYC, verified directly against the contract:
+**Real settlement works.** The IXS vault accepts deposits from anyone — verified
+against the contract, not assumed:
 
 ```
-maxDeposit(any address) = unlimited      deposits open
+maxDeposit(any address) = unlimited       deposits open
 paused()                = false
+previewDeposit(100)     = 91.646260 shares
 ```
 
-So `pnpm settle deposit <amount>` performs a genuine ERC-4626 deposit. It is
-deliberately **not** automatic: IXS publishes no testnet vault, so this is real
-money on BNB Chain mainnet. The scheduler never settles. There is a per-transaction
-ceiling. You opt in by setting a key, or it does not happen.
+No Agent Rail, no OAuth, no KYC. So this performs a genuine ERC-4626 deposit:
 
 ```bash
-pnpm settle status            # position, balances, whether deposits are open
+pnpm settle status            # position, balances, deposits open?
 pnpm settle deposit 5         # real deposit
 pnpm settle redeem 4.5        # real redemption
 ```
 
+It is deliberately **not** automatic. IXS publishes no testnet vault, so this is
+mainnet. The scheduler cannot settle. There is a per-transaction ceiling. You
+opt in with a key, or it does not happen.
+
 ---
 
-## What runs where
+## Layout
 
 ```
 src/
-  scheduler.ts        decides on its own clock; never overlaps runs
-  epoch-runner.ts     one decision: read → reason → check → record → anchor
+  scheduler.ts          decides on its own clock, never overlapping
+  epoch-runner.ts       read → reason → guard → record → anchor
+  api.ts                read API + status, loopback-bound
   vaults/
-    ixs-source.ts     reads IXS vaults straight off BNB Chain
-    ixs-settlement.ts real deposits and redemptions (opt-in)
-    yield-source.ts   public index for the non-IXS vaults
+    ixs-source.ts       reads IXS vaults off BNB Chain
+    ixs-settlement.ts   real deposits / redemptions (opt-in)
+    yield-source.ts     public index for non-IXS vaults
   reasoning/
-    guard-chain.ts    the rules a model cannot argue with
-    policy-graph.ts   the decision contract every model must fill in
+    guard-chain.ts      the rules a model cannot argue with
+    policy-graph.ts     the contract every model must fill in
+    serv-client.ts      forced tool call, serv_* tools when supported
+    model-catalogue.ts  what the endpoint will actually serve
   storage/
-    receipts.ts       fingerprinting
-    anchor.ts         publishing fingerprints onchain
+    receipts.ts         canonical JSON + SHA-256
+    anchor.ts           publishing fingerprints onchain
+    leaderboard.ts      arm rankings
+  config/policy.yaml    caps, spread threshold, pinned vault set
 scripts/
-  verify.py           the check anyone can run; no dependencies
-  settle.ts           manual real settlement
-ui/                   the interface
+  verify.py             the check anyone can run
+  settle.ts             manual real settlement
+  benchmark.py          agent vs. equal-split baseline
+ui/                     the interface
 ```
 
-## Running the checks
+## Checks
 
 ```bash
 pnpm test              # 54 tests
 pnpm verify:onchain    # every receipt, against the chain
-pnpm benchmark         # agent vs. an equal-split baseline
+pnpm benchmark         # agent vs. baseline
 ```
 
-The fingerprinting is implemented twice — once in TypeScript to write receipts,
-once in Python to verify them — and a test pins them to the same value so they
-cannot silently drift apart.
+Fingerprinting is implemented twice — TypeScript writes receipts, Python
+verifies them — and a test pins both to the same digest so they cannot silently
+drift apart.
 
 ---
+
+## Design principles
+
+1. **No synthetic data.** Every number is read from a live source. A vault
+   without enough history reports *unknown*, never a convenient zero.
+2. **Rules live in code, not in prompts.** Prompt instructions are a courtesy;
+   the guard chain is the contract.
+3. **Rejections are evidence.** A blocked decision is recorded with what it
+   tried, because that is when the guards are doing their job.
+4. **Precedence over reputation.** A log proves nothing. A hash in a block
+   before the outcome proves something specific.
+5. **Real money is opt-in and manual.** The autonomous loop can read the world
+   and commit to decisions; it cannot spend.
+6. **Say what is notional.** Once, plainly, in the README and the interface.
 
 ## Where it stops
 
 The agent reads IXS vaults for real and can settle into them for real. What it
-does not do is settle *automatically*: that would mean an unattended process
-moving real money on mainnet, which is not something to ship in a week.
+does not do is settle *automatically* — that would mean an unattended process
+moving mainnet funds, which is not something to ship in a week.
 
-Anchoring runs on a testnet, because the timestamp is what carries the meaning
-and a testnet block proves precedence exactly as well as a mainnet one.
+Anchoring runs on a testnet: the timestamp carries the meaning, and a testnet
+block proves precedence exactly as well as a mainnet one.
