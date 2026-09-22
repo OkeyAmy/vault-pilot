@@ -7,6 +7,11 @@
   "scripts": {
     "dev": "tsx --env-file=.env src/agent.ts",
     "epoch": "tsx --env-file=.env src/tournament.ts",
+    "wallet:new": "tsx scripts/wallet.ts new",
+    "wallet:status": "tsx --env-file=.env scripts/wallet.ts status",
+    "verify": "python3 scripts/verify.py --all",
+    "verify:onchain": "python3 scripts/verify.py --all --rpc",
+    "benchmark": "python3 scripts/benchmark.py",
     "build": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -24,14 +24,32 @@ function baseUrl(): string {
   return process.env.YIELD_SOURCE_BASE_URL ?? DEFAULT_BASE;
 }
 
-/** Current live APY + TVL for every configured vault. */
-export async function fetchCurrentYields(vaults: VaultDef[]): Promise<VaultYield[]> {
+/**
+ * The upstream /pools response covers every pool it tracks and runs to
+ * several megabytes, so it is cached briefly. The TTL is far shorter than
+ * the epoch cadence, so an epoch never reasons over stale yields — this
+ * only spares the UI from refetching on each page load.
+ */
+const POOLS_CACHE_TTL_MS = 60_000;
+let poolsCache: { fetchedAt: number; byPoolId: Map<string, LlamaPool> } | null = null;
+
+async function fetchPools(): Promise<Map<string, LlamaPool>> {
+  if (poolsCache && Date.now() - poolsCache.fetchedAt < POOLS_CACHE_TTL_MS) {
+    return poolsCache.byPoolId;
+  }
   const response = await fetch(`${baseUrl()}/pools`);
   if (!response.ok) {
     throw new YieldSourceError(`Yield source /pools returned ${response.status}`);
   }
   const payload = (await response.json()) as { data: LlamaPool[] };
   const byPoolId = new Map(payload.data.map((p) => [p.pool, p]));
+  poolsCache = { fetchedAt: Date.now(), byPoolId };
+  return byPoolId;
+}
+
+/** Current live APY + TVL for every configured vault. */
+export async function fetchCurrentYields(vaults: VaultDef[]): Promise<VaultYield[]> {
+  const byPoolId = await fetchPools();
   const observedAt = new Date().toISOString();
 
   return vaults.map((vault) => {
