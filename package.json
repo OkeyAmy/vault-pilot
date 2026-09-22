@@ -19,7 +19,8 @@
     "build": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "settle": "tsx --env-file=.env scripts/settle.ts"
   },
   "dependencies": {
     "@openserv-labs/sdk": "^2.4.1",

@@ -3,285 +3,210 @@
 </p>
 
 <p align="center">
-  <b>An autonomous RWA treasury autopilot that reasons through SERV,<br />
-  is stopped by guards it cannot charm, and prints a receipt for everything.</b>
+  <b>A treasury agent that decides where money should sit, proves it decided before it knew the outcome,<br />
+  and cannot be talked into breaking its own rules.</b>
 </p>
 
 <p align="center">
-  SERV Hackathon Edition 01 · <b>RWA Vaults track</b> · partner: IXS Finance<br />
-  <i>live yields · structured reasoning · guard-chained · anchored onchain</i>
+  SERV Hackathon Edition 01 · <b>RWA Vaults track</b> · partner: IXS Finance
 </p>
 
 ---
 
-## The line we are not allowed to weasel out of
+## What this is, in plain terms
 
-> **The capital is notional. The yields, the reasoning, the policy enforcement, and the onchain timestamps are real.**
+Say you hold $1,000,000 of a company's cash. You can park it in tokenized
+treasury bills at 3.8%, or private credit at 5.2%. The rates move daily. Someone
+has to keep deciding, and then justify each decision to whoever owns the money.
 
-`TREASURY_EQUITY_USD` (default $1,000,000) is a number, not a funded wallet.
-Everything the agent reasons over is live: vault APYs are fetched at decision
-time, every decision is a real model call, the guard chain really rejects
-violations, and every receipt hash is really published onchain. A receipt with
-`settlement_mode: "accounting"` means no token transfer occurred — it does not
-mean simulated data. There is no synthetic data anywhere in this project.
+VAULT-PILOT does that on its own, every epoch, forever. It reads what the vaults
+are actually paying right now, thinks through the trade-off, moves the
+allocation, and writes down what it did and why.
 
----
+The part that matters is the last one.
 
-## Preflight — 90 seconds to airborne
+## The problem with an AI that manages money
 
-```bash
-pnpm install
-cp .env.example .env          # set SERV_API_KEY  (console.openserv.ai/settings/keys)
+Any agent can produce a log saying it made good decisions. You cannot tell,
+afterwards, whether that log was written honestly at the time or assembled later
+once the results were known. A convincing track record is easy to fake.
 
-pnpm dev                      # API + interface + epoch scheduler, one command
-```
+So every decision this agent makes gets fingerprinted, and the fingerprint is
+published to a public blockchain **immediately, before anyone knows how the
+decision turns out.**
 
-| | |
-|---|---|
-| interface | <http://localhost:5173> |
-| API | <http://127.0.0.1:8787> |
-| first epoch | seconds after boot (`EPOCH_START_DELAY_SECONDS`, default 5) |
-| cadence | every `EPOCH_INTERVAL_SECONDS` (default 3600, floor 30) |
-| kill switch | `EPOCH_SCHEDULER=off` — API stays up, epochs stop |
-
-The scheduler is the autopilot: it never overlaps runs (epoch numbers come from
-receipts on disk), and a failed epoch logs and retries next tick rather than
-dying. Prefer one shot? `pnpm epoch`. Prefer a button? The interface's **run
-epoch** streams every step through `POST /api/epoch/run`.
-
-Before anything runs, `/api/preflight` tells you what is and is not
-configured — a missing key is a blocker, an unfunded anchoring wallet a
-warning. You never have to guess why a run would fail.
-
----
-
-## The loop
-
-One epoch, start to finish. Nothing in this diagram is illustrative — it is
-the code path every arm travels:
-
-```
-                    ┌──────────────────── ONE EPOCH ────────────────────┐
-                    │                                                  │
-  live yields ──────▶  REASON          GUARD           RECORD          │  ANCHOR
-  · IXS ERC-4626    │  SERV × 4 arms   deterministic   SHA-256         │  zero-value
-    read onchain    │  forced          re-check:       receipt per     │  self-send,
-    on BNB Chain    │  submit_         caps, NaN,      arm: pre/post,  │  hash as
-  · BUIDL, USDY,    │  decision        unknown         rationale,      │  calldata
-    Maple, Centrif. │  tool call       vaults,         cost, guards    │  on Base
-    via public      │                  negative                    ────▶  Sepolia
-    index           │                  numbers                        │
-                    └──────────────────────────────────────────────────┘
-```
-
-5\. The receipt hash goes onchain as transaction calldata. The block
-timestamp proves the decision existed *before* its outcome was known.
-
-### How a decision is actually made
-
-Each arm, each epoch:
-
-1. **Fetch** — APY/TVL for every vault in the policy. IXS vaults are read
-   straight from the ERC-4626 contract (`convertToAssets(1 share)`); yield is
-   derived from share-price history and honestly reported as
-   `insufficient_history` until 30 minutes of samples exist — an unproven vault
-   says *unknown*, never a fabricated number.
-2. **Reason** — one call to SERV's OpenAI-compatible endpoint at temperature
-   0.1, forced through a `submit_decision` tool call so every provider returns
-   the same typed shape. The model must weigh credit risk, liquidity, and
-   uncertainty — and state in its rationale what it chose *not* to do.
-3. **Guard** — the deterministic chain re-checks everything. Any violation
-   holds the previous allocation.
-4. **Record** — a receipt captures before/after allocations, observed yields,
-   rationale, confidence, risk score, token cost, and the guard verdict.
-   Rejected proposals are kept, not hidden: `policy_violations` shows exactly
-   what the model tried.
-5. **Anchor** — the receipt's SHA-256 is published onchain.
-
-### The flight plan is code, twice
-
-`src/config/policy.yaml` is the contract: 40% per-vault cap, 1.0 gross cap,
-15bps minimum rebalance spread, a pinned vault set (IXS Agentic Vault, BUIDL,
-USDY, Maple USDC, Centrifuge USDS).
-
-It is enforced **twice** — once as instructions to the model, again by
-`runGuardChain()` in code. The second one is authoritative:
-
-- unknown vaults rejected
-- negative or non-finite allocations rejected
-- over-cap and over-gross rejected
-- anything below the spread threshold isn't worth moving for
-
-**A model cannot talk its way past it.** Confidence 0.99 is not a credential.
-
-> Vault labels and pool metadata come from a third-party feed and are
-> interpolated into the prompt that controls capital allocation. That is a
-> real injection vector, so `serv_prompt_guard` runs on every call — and even
-> a successful injection still hits the guard chain on the way out.
-
----
-
-## The arena — which reasoning config allocates best?
-
-Arms are environment, not code:
-
-```
-TOURNAMENT_MODELS=id:model:shadow:inPriceUSD:outPriceUSD,...
-```
-
-Default roster:
-
-| arm | model | shadow loop | what it tests |
-|---|---|---|---|
-| `base-a` | `gpt-5.4-mini` | off | control |
-| `shadow-a` | `gpt-5.4-mini` | **on** | what `serv_shadow_agent` alone contributes |
-| `base-b` | `claude-haiku-4.5` | off | cross-vendor reasoning |
-| `base-c` | `gemini-3.5-flash` | off | cost vs. quality frontier |
-
-Fairness rules:
-
-- every arm sees the **identical yield snapshot** each epoch — differences are
-  attributable to reasoning, not data;
-- `base-a` vs `shadow-a` isolates SERV's validation loop against itself on the
-  same model, so the arena measures a feature, not a brand;
-- ranking is **cumulative yield delta**, shown beside **cost per decision** and
-  **policy-compliance rate** — an arm that earns more by failing guards more
-  often is not obviously better, and the leaderboard refuses to hide that.
-
-`SERV_BASE_URL` and `TOURNAMENT_MODELS` are both env-driven, so any
-OpenAI-compatible endpoint works. `serv_*` tools are SERV's convention (SERV
-strips them before the model sees them); other gateways would forward them as
-real tools, so they are only sent when the endpoint actually implements them
-(auto-detected, force with `SERV_TOOLS=on|off`). Receipts record
-`shadow_agent: false` when the loop never ran — no claiming validation that
-did not happen.
-
----
-
-## A log proves nothing. A receipt proves precedence.
-
-Anyone can generate a self-consistent hash chain after the fact. What they
-cannot do is put a hash in a block *before the future is known*.
-
-So each receipt's SHA-256 is written onchain as the calldata of a zero-value
-self-send — cheap, contract-free, and permanent. The block timestamp is the
-claim: **this decision existed before its outcome did.** That is the
-difference between a log and evidence.
-
-The split of duties:
-
-- **local files** hold the full receipt (rationale, allocations, costs) and
-  serve the API, UI, and leaderboard;
-- **the chain** holds only the digest — the commitment you verify against;
-- **`verify.py`** closes the loop: recompute the local hash, fetch the anchor
-  transaction, compare calldata byte-for-byte.
-
-The anchoring wallet only ever signs zero-value testnet transactions. It never
-holds or moves treasury capital — keep it separate from any key that does.
-
-```bash
-pnpm wallet:new       # throwaway key; add it to .env
-# fund the printed address from a Base Sepolia faucet
-pnpm wallet:status    # balance + chain confirmed
-pnpm epoch            # receipts now carry an onchain anchor
-```
-
----
-
-## Landing the claim — verify it yourself in 60 seconds
+That timestamp is the whole product. It converts *"trust our logs"* into
+*"check the chain yourself"*:
 
 ```bash
 python3 scripts/verify.py --all --rpc
 ```
 
-Standalone Python 3.9+, standard library only — no install step. Six seals
-per receipt, each one a way the record could have lied:
+Anyone can run that. It recomputes every fingerprint, fetches the matching
+transaction, and compares them byte for byte. If a single number in a single
+receipt were edited afterwards, the fingerprints would stop matching and the
+check would fail loudly.
 
-| # | seal | what it kills |
-|---|---|---|
-| 1 | SHA-256 recomputes over canonical JSON | edited receipts |
-| 2 | allocation chain continuous (`preₙ = postₙ₋₁`) | history rewritten between epochs |
-| 3 | policy caps hold on every allocation | over-cap moves smuggled in |
-| 4 | yield delta matches allocations × observed yields | inflated scoreboards |
-| 5 | settlement mode agrees with tx-hash presence | claimed onchain fills that never happened |
-| 6 | `--rpc`: hash really is the calldata of the named tx | anchors that were never anchored |
-
-Then open any receipt's `explorer_url` and compare. **They are the same
-bytes.**
-
-The verifier is deliberately adversarial — it has been tested against tampered
-receipts and catches, among others, an over-cap allocation re-hashed to look
-internally valid. The TypeScript writer and the Python verifier share one
-pinned regression test, so they cannot silently drift apart.
+A log asks you to trust the author. A receipt anchored in a block does not.
 
 ---
 
-## Billing the flight
-
-Basis points on assets under management. A $10M treasury at 20bp is $20k/yr;
-ten such treasuries is $200k ARR. No seats, no per-user licensing — it scales
-with TVL, which is the same thing the vault operator wants.
-
-The claim gets a number, not an adjective:
+## Try it
 
 ```bash
-python3 scripts/benchmark.py
+pnpm install
+cp .env.example .env     # add one API key
+pnpm dev                 # agent + interface, one command
 ```
 
-Each arm is compounded against an equal-weight static baseline using **the
-yields each epoch actually observed** — no re-fetching, no hindsight — then
-netted against reasoning cost. Output lands in `benchmark_results.json`.
-With one epoch the delta is near zero; that is honesty, not a bug. Let the
-scheduler accumulate before quoting figures.
+Open <http://localhost:5173>. The agent starts thinking within seconds and keeps
+going on its own. You are not required to press anything — the button exists
+only if you want an extra run immediately.
+
+| | |
+|---|---|
+| interface | <http://localhost:5173> |
+| API | <http://127.0.0.1:8787> |
+| how often it decides | `EPOCH_INTERVAL_SECONDS` (default 1 hour) |
+| stop it deciding | `EPOCH_SCHEDULER=off` |
+
+If something is missing — no API key, unfunded wallet — the interface says so
+in plain language before you run anything, rather than failing halfway through.
 
 ---
 
-## Logbook
+## How one decision works
+
+**1 · Look at what the vaults are actually paying.**
+Not a cached table. The IXS vault is read straight off BNB Chain by asking the
+contract what one share is currently worth. The others come from a public yield
+index. Nothing here is invented — there is no synthetic data anywhere in this
+project.
+
+**2 · Think it through.**
+Each model gets the same numbers and the same instructions, and must answer in
+a fixed form: target allocation, rationale, confidence, risk score. It is asked
+to weigh three things a naive optimiser would ignore:
+
+- *credit risk* — private credit pays more because it can default
+- *concentration* — a vault holding $656 total cannot absorb $200,000
+- *uncertainty* — a new vault has no track record yet, and is told so honestly
+  rather than being handed a fake 0%
+
+**3 · Check it against the rules.**
+The policy — no more than 40% in one vault, never more than fully invested,
+don't churn for less than 15 basis points — is enforced twice. Once as
+instructions to the model, and again in code afterwards.
+
+The second one is the real one. **A model cannot argue with it.** High
+confidence is not a credential. If a decision breaks a rule it is rejected, the
+previous allocation stands, and the receipt records exactly what was attempted.
+Failed attempts are kept, not hidden.
+
+**4 · Write the receipt and anchor it.**
+Before/after allocation, the yields it saw, its reasoning, what it cost, whether
+the guards passed. Then the fingerprint goes onchain.
+
+---
+
+## Why several models at once
+
+Four or five models run the same decision on the same data every epoch. Not to
+crown a winner, but because *disagreement is the interesting signal.*
+
+A recent epoch, same inputs:
+
+> **nemotron-super** kept 20% in the new IXS vault and moved toward the
+> higher-yielding private credit. Risk score 0.6.
+>
+> **nemotron-ultra** cut that vault to 5%, reasoning that *"TVL of only $656,
+> implying >30% ownership concentration and zero observed yield history"* made
+> it a liquidity risk regardless of the headline rate. Risk score 0.35.
+
+Neither is obviously wrong. That is the point — you can see how differently
+models weigh risk when the answer is not obvious, and every one of those
+judgements is on the record.
+
+The leaderboard ranks by yield captured, but shows cost per decision and
+rule-compliance beside it. An agent that earns more by breaking rules more often
+is not better, and the table refuses to hide that.
+
+Adding models is a config line, not a code change. `/api/models` lists every
+model the endpoint will actually serve.
+
+---
+
+## Honest about what is real
+
+> **The capital is notional. The yields, the reasoning, the rule enforcement,
+> and the timestamps are real.**
+
+`TREASURY_EQUITY_USD` is a number, not a funded account. A receipt saying
+`settlement_mode: "accounting"` means no tokens moved — it does **not** mean the
+data was fake.
+
+**Real settlement is available and works.** The IXS vault accepts deposits from
+anyone — no permission, no KYC, verified directly against the contract:
+
+```
+maxDeposit(any address) = unlimited      deposits open
+paused()                = false
+```
+
+So `pnpm settle deposit <amount>` performs a genuine ERC-4626 deposit. It is
+deliberately **not** automatic: IXS publishes no testnet vault, so this is real
+money on BNB Chain mainnet. The scheduler never settles. There is a per-transaction
+ceiling. You opt in by setting a key, or it does not happen.
+
+```bash
+pnpm settle status            # position, balances, whether deposits are open
+pnpm settle deposit 5         # real deposit
+pnpm settle redeem 4.5        # real redemption
+```
+
+---
+
+## What runs where
 
 ```
 src/
-  agent.ts            OpenServ agent + capabilities (scan, run, receipts, board)
-  api.ts              JSON API for the UI + embedded epoch scheduler
-  scheduler.ts        the autopilot: cadence, overlap guard, failure tolerance
-  epoch-runner.ts     yields -> decide -> guard -> receipt -> anchor
-  run-state.ts        live run progress streamed to the interface
-  vaults/             live yield source: IXS onchain + public index
-  reasoning/          policy graph, guard chain, arms, SERV client
-  storage/            canonical receipts, anchoring, portfolio math, leaderboard
-  config/policy.yaml  the flight plan: vault set and caps
+  scheduler.ts        decides on its own clock; never overlaps runs
+  epoch-runner.ts     one decision: read → reason → check → record → anchor
+  vaults/
+    ixs-source.ts     reads IXS vaults straight off BNB Chain
+    ixs-settlement.ts real deposits and redemptions (opt-in)
+    yield-source.ts   public index for the non-IXS vaults
+  reasoning/
+    guard-chain.ts    the rules a model cannot argue with
+    policy-graph.ts   the decision contract every model must fill in
+  storage/
+    receipts.ts       fingerprinting
+    anchor.ts         publishing fingerprints onchain
 scripts/
-  dev.mjs             one command: API + interface, interleaved logs
-  verify.py           judge-facing verification (offline + --rpc)
-  benchmark.py        agent vs. static baseline on observed yields
-  wallet.ts           anchoring key tooling
-  run-epochs.sh       external loop, if you prefer the scheduler off
-ui/                   paper-minimal interface: home, tournament, receipts, policy
+  verify.py           the check anyone can run; no dependencies
+  settle.ts           manual real settlement
+ui/                   the interface
 ```
+
+## Running the checks
 
 ```bash
-pnpm test     # 54 unit tests — hash contract, guards, portfolio math, arms
-pnpm build    # type-checks everything
-pnpm lint
+pnpm test              # 54 tests
+pnpm verify:onchain    # every receipt, against the chain
+pnpm benchmark         # agent vs. an equal-split baseline
 ```
 
----
-
-## Where it lands next
-
-**Onchain settlement via IXS Agent Rail.** IXS exposes ERC-4626 vault
-operations over MCP, and the decision output here is already shaped as an
-ERC-4626 allocation, so execution is a wiring step rather than a redesign.
-The documented agent-wallet flow authenticates through interactive browser
-OAuth, which is incompatible with unattended operation; this build therefore
-stops at the allocation of record. Headless credentials are the missing
-piece, not the integration.
-
-**Longer soak.** Yield deltas over a handful of epochs are noise. The claim
-gets stronger with weeks of anchored receipts, not with better wording.
+The fingerprinting is implemented twice — once in TypeScript to write receipts,
+once in Python to verify them — and a test pins them to the same value so they
+cannot silently drift apart.
 
 ---
 
-<p align="center">
-  <img src="ui/public/logo.svg" alt="VAULT-PILOT" width="360" /><br />
-  <sub>notional capital · live yields · real timestamps · verify: <code>python3 scripts/verify.py --all --rpc</code></sub>
-</p>
+## Where it stops
+
+The agent reads IXS vaults for real and can settle into them for real. What it
+does not do is settle *automatically*: that would mean an unattended process
+moving real money on mainnet, which is not something to ship in a week.
+
+Anchoring runs on a testnet, because the timestamp is what carries the meaning
+and a testnet block proves precedence exactly as well as a mainnet one.
