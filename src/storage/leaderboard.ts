@@ -19,6 +19,12 @@ export interface LeaderboardRow {
   policy_compliance_pct: number;
   mean_confidence: number;
   mean_risk_score: number;
+  /** Where this arm currently sits — the point of comparing arms at all. */
+  current_allocation: Record<string, number>;
+  /** Most recent reasoning, so the table can show why, not only how much. */
+  latest_rationale: string;
+  receipts_anchored: number;
+  last_epoch_at: string;
 }
 
 function summarize(modelId: string, receipts: SignedReceipt[]): LeaderboardRow | null {
@@ -44,6 +50,10 @@ function summarize(modelId: string, receipts: SignedReceipt[]): LeaderboardRow |
     policy_compliance_pct: ((receipts.length - guardFailures) / receipts.length) * 100,
     mean_confidence: receipts.reduce((s, r) => s + r.confidence, 0) / receipts.length,
     mean_risk_score: receipts.reduce((s, r) => s + r.risk_score, 0) / receipts.length,
+    current_allocation: last.post_allocation,
+    latest_rationale: last.rationale,
+    receipts_anchored: receipts.filter((r) => r.anchor).length,
+    last_epoch_at: last.timestamp,
   };
 }
 

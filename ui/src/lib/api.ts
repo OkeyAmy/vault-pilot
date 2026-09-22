@@ -27,6 +27,8 @@ export interface VaultYield {
   vaultId: string;
   poolId: string;
   apyBps: number;
+  apyKnown?: boolean;
+  sharePrice?: number;
   tvlUsd: number;
   observedAt: string;
 }
@@ -78,6 +80,10 @@ export interface LeaderboardRow {
   policy_compliance_pct: number;
   mean_confidence: number;
   mean_risk_score: number;
+  current_allocation: Record<string, number>;
+  latest_rationale: string;
+  receipts_anchored: number;
+  last_epoch_at: string;
 }
 
 export interface Preflight {
@@ -107,6 +113,9 @@ export interface RunStep {
 
 export interface RunState {
   phase: "idle" | "running" | "done" | "error";
+  nextRunAt?: string | null;
+  intervalSeconds?: number;
+  schedulerOn?: boolean;
   startedAt: string | null;
   finishedAt: string | null;
   steps: RunStep[];

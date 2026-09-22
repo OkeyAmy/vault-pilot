@@ -105,18 +105,36 @@ export async function readVaultState(vault: VaultDef): Promise<IXSVaultState> {
  * recorded sample. Returns null when there is not yet enough history — the
  * agent is told "unknown", never a fabricated number.
  */
+const MIN_WINDOW_HOURS = Number(process.env.IXS_MIN_YIELD_WINDOW_HOURS ?? 6);
+
 export function impliedApyBps(history: PricePoint[], current: PricePoint): number | null {
   const earliest = history[0];
   if (!earliest) return null;
+  if (earliest.sharePrice <= 0) return null;
 
   const elapsedMs = new Date(current.at).getTime() - new Date(earliest.at).getTime();
-  const MIN_WINDOW_MS = 30 * 60 * 1000;
-  if (elapsedMs < MIN_WINDOW_MS) return null;
-  if (earliest.sharePrice <= 0) return null;
+  if (elapsedMs < MIN_WINDOW_HOURS * 60 * 60 * 1000) return null;
+
+  // An unchanged share price is not evidence of zero yield. These vaults
+  // accrue slowly enough that a realistic APY moves the price by less than
+  // the precision we can read over a short window, so an identical reading
+  // means "not resolved yet", not "earned nothing". Reporting 0% here would
+  // be the one thing this project refuses to do: invent a number.
+  if (current.sharePrice === earliest.sharePrice) return null;
 
   const growth = current.sharePrice / earliest.sharePrice - 1;
   const periodsPerYear = (365 * 24 * 60 * 60 * 1000) / elapsedMs;
   return Math.round(growth * periodsPerYear * 10_000);
+}
+
+/** Samples closer together than this add noise without adding information. */
+const MIN_SAMPLE_GAP_MS = Number(process.env.IXS_MIN_SAMPLE_GAP_MINUTES ?? 5) * 60 * 1000;
+
+function shouldRecord(series: PricePoint[], point: PricePoint): boolean {
+  const last = series[series.length - 1];
+  if (!last) return true;
+  if (last.sharePrice !== point.sharePrice) return true;
+  return new Date(point.at).getTime() - new Date(last.at).getTime() >= MIN_SAMPLE_GAP_MS;
 }
 
 /**
@@ -133,9 +151,11 @@ export async function fetchIXSYields(vaults: VaultDef[]): Promise<VaultYield[]> 
     const series = history[vault.vaultId] ?? [];
     const apyBps = impliedApyBps(series, point);
 
-    series.push(point);
-    // Keep the window bounded; the earliest point anchors the APY estimate.
-    history[vault.vaultId] = series.slice(-500);
+    if (shouldRecord(series, point)) {
+      series.push(point);
+      // Keep the window bounded; the earliest point anchors the APY estimate.
+      history[vault.vaultId] = series.slice(-500);
+    }
 
     results.push({
       vaultId: vault.vaultId,

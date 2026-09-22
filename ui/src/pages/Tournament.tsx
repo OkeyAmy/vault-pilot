@@ -1,13 +1,18 @@
-import { useCallback, useState } from "react";
+import { Fragment, useCallback, useState } from "react";
 import { api, type LeaderboardRow, type VaultYield } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import { Panel, SectionTitle, Empty, ErrorNote } from "../components/shell";
 import { RunPanel } from "../components/RunPanel";
-import { apy, usd, signedBps, costUsd, pct, timeAgo } from "../lib/format";
+import { AllocationBar, AllocationLegend, allocationOrder } from "../components/AllocationBar";
+import { apy, usd, signedBps, pct, timeAgo } from "../lib/format";
 
 function YieldStrip({ yields }: { yields: VaultYield[] }) {
-  const best = Math.max(...yields.map((y) => y.apyBps));
-  const worst = Math.min(...yields.map((y) => y.apyBps));
+  // A vault without enough history has no yield — not a yield of zero.
+  // Including it in best/worst would invent a spread that does not exist.
+  const known = yields.filter((y) => y.apyKnown !== false);
+  const best = known.length > 0 ? Math.max(...known.map((y) => y.apyBps)) : null;
+  const worst = known.length > 0 ? Math.min(...known.map((y) => y.apyBps)) : null;
+  const unknownCount = yields.length - known.length;
 
   return (
     <>
@@ -21,73 +26,125 @@ function YieldStrip({ yields }: { yields: VaultYield[] }) {
               <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
                 {y.vaultId}
               </span>
-              {y.apyBps === best ? (
+              {y.apyKnown === false ? (
+                <span className="chip">unproven</span>
+              ) : y.apyBps === best ? (
                 <span className="chip chip-accent">best</span>
               ) : null}
             </div>
-            <div className="tabular mt-2 text-2xl font-semibold text-ink">{apy(y.apyBps)}</div>
+            {y.apyKnown === false ? (
+              <>
+                <div className="tabular mt-2 text-2xl font-semibold text-muted">—</div>
+                <div className="mt-1 text-xs text-muted">no yield history yet</div>
+              </>
+            ) : (
+              <div className="tabular mt-2 text-2xl font-semibold text-ink">{apy(y.apyBps)}</div>
+            )}
             <div className="mt-1 text-xs text-muted">tvl {usd(y.tvlUsd)}</div>
           </Panel>
         ))}
       </div>
       <p className="mt-3 text-xs text-muted">
-        Spread between best and worst vault:{" "}
-        <span className="tabular text-ink">{(best - worst).toFixed(0)}bps</span>. A rebalance is
-        only permitted when it clears the policy threshold.
+        {best !== null && worst !== null ? (
+          <>
+            Spread across vaults with observed yield:{" "}
+            <span className="tabular text-ink">{(best - worst).toFixed(0)}bps</span>. A rebalance is
+            only permitted when it clears the policy threshold.
+          </>
+        ) : (
+          <>No vault has enough yield history to compare yet.</>
+        )}
+        {unknownCount > 0 ? (
+          <>
+            {" "}
+            <span className="tabular text-ink">{unknownCount}</span>{" "}
+            {unknownCount === 1 ? "vault reports" : "vaults report"} no yield yet, shown as
+            unknown rather than zero — deciding what to do with that is part of the task.
+          </>
+        ) : null}
       </p>
     </>
   );
 }
 
 function StandingsTable({ rows }: { rows: LeaderboardRow[] }) {
+  const order = allocationOrder(rows.map((r) => r.current_allocation ?? {}));
+  const [openArm, setOpenArm] = useState<string | null>(null);
+
   return (
-    <Panel className="overflow-x-auto">
-      <table className="table-grid min-w-[720px]">
-        <thead>
-          <tr>
-            <th>arm</th>
-            <th>model</th>
-            <th className="text-right">epochs</th>
-            <th className="text-right">rebalances</th>
-            <th className="text-right">cumulative Δ</th>
-            <th className="text-right">cost/decision</th>
-            <th className="text-right">compliance</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={row.model_id}>
-              <td>
-                <span className="text-muted">{index + 1}.</span>{" "}
-                <span className="font-medium text-ink">{row.model_id}</span>
-                {row.shadow_agent ? <span className="chip chip-accent ml-2">shadow</span> : null}
-              </td>
-              <td className="text-muted">{row.reasoning_model}</td>
-              <td className="tabular text-right">{row.epochs}</td>
-              <td className="tabular text-right">{row.rebalances}</td>
-              <td
-                className={`tabular text-right font-medium ${
-                  row.cumulative_yield_delta_bps >= 0 ? "text-good" : "text-bad"
-                }`}
-              >
-                {signedBps(row.cumulative_yield_delta_bps)}
-              </td>
-              <td className="tabular text-right text-muted">
-                {costUsd(row.cost_per_decision_usd)}
-              </td>
-              <td
-                className={`tabular text-right ${
-                  row.guard_failures > 0 ? "text-warn" : "text-muted"
-                }`}
-              >
-                {row.policy_compliance_pct.toFixed(0)}%
-                {row.guard_failures > 0 ? ` (${row.guard_failures} held)` : ""}
-              </td>
+    <>
+      <Panel className="overflow-x-auto">
+        <table className="table-grid min-w-[860px]">
+          <thead>
+            <tr>
+              <th>arm</th>
+              <th>model</th>
+              <th className="w-[26%]">current position</th>
+              <th className="text-right">epochs</th>
+              <th className="text-right">cumulative Δ</th>
+              <th className="text-right">risk</th>
+              <th className="text-right">compliance</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </Panel>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <Fragment key={row.model_id}>
+                <tr
+                  onClick={() => setOpenArm(openArm === row.model_id ? null : row.model_id)}
+                  className="cursor-pointer"
+                  title="Show this arm's reasoning"
+                >
+                  <td>
+                    <span className="text-muted">{index + 1}.</span>{" "}
+                    <span className="font-medium text-ink">{row.model_id}</span>
+                    {row.shadow_agent ? <span className="chip chip-accent ml-2">shadow</span> : null}
+                  </td>
+                  <td className="text-muted">{row.reasoning_model?.split("/").pop()}</td>
+                  <td>
+                    <AllocationBar allocation={row.current_allocation ?? {}} order={order} />
+                  </td>
+                  <td className="tabular text-right">{row.epochs}</td>
+                  <td
+                    className={`tabular text-right font-medium ${
+                      row.cumulative_yield_delta_bps >= 0 ? "text-good" : "text-bad"
+                    }`}
+                  >
+                    {signedBps(row.cumulative_yield_delta_bps)}
+                  </td>
+                  <td className="tabular text-right text-muted">
+                    {pct(row.mean_risk_score ?? 0, 0)}
+                  </td>
+                  <td
+                    className={`tabular text-right ${
+                      row.guard_failures > 0 ? "text-warn" : "text-muted"
+                    }`}
+                  >
+                    {row.policy_compliance_pct.toFixed(0)}%
+                    {row.guard_failures > 0 ? ` (${row.guard_failures} held)` : ""}
+                  </td>
+                </tr>
+                {openArm === row.model_id && row.latest_rationale ? (
+                  <tr>
+                    <td colSpan={7} className="bg-paper">
+                      <p className="max-w-3xl text-xs leading-6 text-muted">
+                        <span className="font-semibold uppercase tracking-[0.16em] text-ink">
+                          why{" "}
+                        </span>
+                        {row.latest_rationale}
+                      </p>
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </Panel>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <AllocationLegend order={order} />
+        <span className="text-[11px] text-muted">click a row to read its reasoning</span>
+      </div>
+    </>
   );
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Preflight, type RunState } from "../lib/api";
 import { Panel } from "./shell";
+import { Heartbeat } from "./Heartbeat";
 
 const LEVEL_COLOR = {
   info: "text-muted",
@@ -117,6 +118,10 @@ export function RunPanel({ onRunComplete }: { onRunComplete: () => void }) {
             : blocked
               ? "Not ready to run — see below."
               : "Fetches live yields, requests a decision per arm, writes signed receipts."}
+        </span>
+
+        <span className="ml-auto flex items-center gap-4">
+          <Heartbeat run={run} />
         </span>
 
         {run?.phase === "done" ? (
