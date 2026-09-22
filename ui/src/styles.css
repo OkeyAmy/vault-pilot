@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@theme {
+  --color-base: #08090c;
+  --color-panel: #0e1015;
+  --color-edge: #1c2029;
+  --color-ink: #e6e8ee;
+  --color-muted: #8a90a0;
+  --color-accent: #5eead4;
+  --color-warn: #fbbf24;
+  --color-bad: #f87171;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-base);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numeric columns must align across rows for scanning. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

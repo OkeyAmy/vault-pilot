@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "tsx --env-file=.env src/agent.ts",
     "epoch": "tsx --env-file=.env src/tournament.ts",
+    "api": "tsx --env-file=.env src/api.ts",
+    "ui": "pnpm --filter vault-pilot-ui dev",
     "wallet:new": "tsx scripts/wallet.ts new",
     "wallet:status": "tsx --env-file=.env scripts/wallet.ts status",
     "verify": "python3 scripts/verify.py --all",
