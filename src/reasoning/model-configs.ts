@@ -27,19 +27,20 @@ const DEFAULT_TOURNAMENT_MODELS = [
 
 function parseArm(spec: string, index: number): ModelConfig {
   const parts = spec.trim().split(":");
-  if (parts.length !== 5) {
+  if (parts.length < 5) {
     throw new Error(
       `TOURNAMENT_MODELS entry #${index + 1} ("${spec.trim()}") must have 5 colon-separated ` +
         `fields: id:model:shadow:inPrice:outPrice`,
     );
   }
-  const [id, model, shadow, inPrice, outPrice] = parts as [
-    string,
-    string,
-    string,
-    string,
-    string,
-  ];
+  // Model identifiers may themselves contain colons (a vendor suffix, a tag),
+  // so the fixed fields are read from the ends and everything left over in the
+  // middle is rejoined as the model id.
+  const id = parts[0]!;
+  const outPrice = parts[parts.length - 1]!;
+  const inPrice = parts[parts.length - 2]!;
+  const shadow = parts[parts.length - 3]!;
+  const model = parts.slice(1, parts.length - 3).join(":");
   const inputPrice = Number(inPrice);
   const outputPrice = Number(outPrice);
   if (!id || !model) {

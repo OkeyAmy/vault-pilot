@@ -112,7 +112,24 @@ export async function requestDecision(params: {
     );
   }
 
-  const payload = (await response.json()) as ChatCompletionResponse;
+  const payload = (await response.json()) as ChatCompletionResponse & {
+    error?: { message?: string; code?: string | number };
+  };
+
+  // A 200 response does not guarantee a completion: providers return an error
+  // object in the body for rate limits and upstream failures. Surface that
+  // instead of failing on a missing field.
+  if (payload.error) {
+    throw new ReasoningError(
+      `${params.model.model}: ${payload.error.message ?? JSON.stringify(payload.error)}`,
+    );
+  }
+  if (!Array.isArray(payload.choices) || payload.choices.length === 0) {
+    throw new ReasoningError(
+      `${params.model.model} returned no choices: ${JSON.stringify(payload).slice(0, 300)}`,
+    );
+  }
+
   const message = payload.choices[0]?.message;
   const toolCall = message?.tool_calls?.find((tc) => tc.function.name === "submit_decision");
   if (!toolCall) {

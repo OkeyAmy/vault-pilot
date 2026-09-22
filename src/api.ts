@@ -8,14 +8,25 @@ import { anchoringEnabled, anchorAddress, anchorBalanceWei } from "./storage/anc
 import { runTournamentEpoch } from "./epoch-runner.js";
 import { runState } from "./run-state.js";
 import { servToolsSupported, resolvedBaseUrl } from "./reasoning/serv-client.js";
+import { startScheduler, type SchedulerHandle } from "./scheduler.js";
 
 const PORT = Number(process.env.API_PORT ?? 8787);
+
+/**
+ * The UI origin allowed to read this API. Defaults to the local dev server
+ * rather than `*`, so a page on another origin cannot read agent state.
+ */
+const ALLOWED_ORIGIN = process.env.UI_ORIGIN ?? "http://localhost:5173";
+
+/** Loopback unless deliberately exposed — this API drives a funded wallet. */
+const HOST = process.env.API_HOST ?? "127.0.0.1";
 
 function json(res: ServerResponse, status: number, body: unknown) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
     "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+    "Vary": "Origin",
     "Content-Length": Buffer.byteLength(payload),
   });
   res.end(payload);
@@ -25,15 +36,21 @@ function json(res: ServerResponse, status: number, body: unknown) {
  * Read-only JSON API backing the UI. Deliberately has no mutating routes:
  * epochs are driven by the agent and the epoch runner, never by a page load.
  */
-export function startReadApi() {
+let scheduler: SchedulerHandle | null = null;
+
+export function startReadApi(options: { withScheduler?: boolean } = {}) {
+  if (options.withScheduler !== false && scheduler === null) {
+    scheduler = startScheduler();
+  }
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
 
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+        "Vary": "Origin",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
       });
       return res.end();
     }
@@ -41,6 +58,21 @@ export function startReadApi() {
     if (url.pathname === "/api/epoch/run") {
       if (req.method !== "POST") {
         return json(res, 405, { error: "use POST to start an epoch" });
+      }
+      // The scheduler is the normal driver; this endpoint only exists to
+      // trigger an extra epoch on demand. It changes state, so it requires an
+      // operator token — without one configured it stays closed rather than
+      // open, so a page in another tab cannot drive this agent.
+      const expected = process.env.OPERATOR_TOKEN;
+      if (!expected) {
+        return json(res, 403, {
+          error:
+            "Manual epoch triggering is disabled. Set OPERATOR_TOKEN to enable it; " +
+            "the scheduler runs epochs automatically regardless.",
+        });
+      }
+      if (req.headers.authorization !== `Bearer ${expected}`) {
+        return json(res, 401, { error: "unauthorized" });
       }
       if (runState.isRunning()) {
         return json(res, 409, { error: "an epoch is already running" });
@@ -57,7 +89,12 @@ export function startReadApi() {
     }
 
     if (url.pathname === "/api/epoch/status") {
-      return json(res, 200, runState.get());
+      return json(res, 200, {
+        ...runState.get(),
+        nextRunAt: scheduler?.nextRunAt() ?? null,
+        intervalSeconds: Number(process.env.EPOCH_INTERVAL_SECONDS ?? 3600),
+        schedulerOn: process.env.EPOCH_SCHEDULER !== "off",
+      });
     }
 
     try {
@@ -159,8 +196,8 @@ export function startReadApi() {
     }
   });
 
-  server.listen(PORT, () => {
-    console.log(`read API listening on http://localhost:${PORT}`);
+  server.listen(PORT, HOST, () => {
+    console.log(`API listening on http://${HOST}:${PORT} (UI origin: ${ALLOWED_ORIGIN})`);
   });
   return server;
 }

@@ -10,7 +10,7 @@ function AllocationBar({ allocation }: { allocation: Record<string, number> }) {
 
   return (
     <div className="space-y-1">
-      <div className="flex h-2 overflow-hidden rounded bg-edge">
+      <div className="flex h-2 overflow-hidden border border-edge bg-paper">
         {entries.map(([vaultId, fraction], i) => (
           <div
             key={vaultId}
@@ -42,12 +42,12 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
   return (
     <Panel className="p-4">
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <span className="text-sm text-ink">epoch {receipt.epoch}</span>
+        <span className="text-sm font-medium text-ink">epoch {receipt.epoch}</span>
         <span className="text-xs text-muted">{receipt.model}</span>
         <span
-          className={`tabular text-sm ${
+          className={`tabular text-sm font-medium ${
             receipt.yield_delta_bps > 0
-              ? "text-accent"
+              ? "text-good"
               : receipt.yield_delta_bps < 0
                 ? "text-bad"
                 : "text-muted"
@@ -56,25 +56,27 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
           {signedBps(receipt.yield_delta_bps, 2)}
         </span>
         {!receipt.policy_checks_passed ? (
-          <span className="rounded border border-warn/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-warn">
-            guards held allocation
-          </span>
+          <span className="chip chip-warn">guards held allocation</span>
         ) : null}
         <span className="ml-auto text-xs text-muted">{timeAgo(receipt.timestamp)}</span>
       </div>
 
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
         <div>
-          <div className="mb-1 text-[11px] uppercase tracking-wider text-muted">before</div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+            before
+          </div>
           <AllocationBar allocation={receipt.pre_allocation} />
         </div>
         <div>
-          <div className="mb-1 text-[11px] uppercase tracking-wider text-muted">after</div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+            after
+          </div>
           <AllocationBar allocation={receipt.post_allocation} />
         </div>
       </div>
 
-      <p className="mt-3 text-sm leading-relaxed text-muted">{receipt.rationale}</p>
+      <p className="mt-3 text-sm leading-7 text-muted">{receipt.rationale}</p>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
         <span>
@@ -91,17 +93,17 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
         </span>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="text-muted underline decoration-edge underline-offset-4 hover:text-ink"
+          className="text-accent underline decoration-accent/40 underline-offset-4 hover:decoration-accent"
         >
           {open ? "hide proof" : "show proof"}
         </button>
       </div>
 
       {open ? (
-        <div className="mt-3 space-y-2 border-t border-edge pt-3 text-xs">
+        <div className="mt-3 space-y-2 border-t border-rule pt-3 text-xs">
           <div>
             <span className="text-muted">receipt hash </span>
-            <span className="tabular break-all text-ink">{receipt.receipt_hash}</span>
+            <span className="tabular break-all font-mono text-ink">{receipt.receipt_hash}</span>
           </div>
           {receipt.anchor ? (
             <>
@@ -115,11 +117,11 @@ function ReceiptCard({ receipt }: { receipt: Receipt }) {
                 href={receipt.anchor.explorer_url}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="inline-block text-accent underline decoration-accent/40 underline-offset-4"
+                className="btn btn-primary mt-1"
               >
                 verify onchain: {shortHash(receipt.anchor.tx_hash, 14)} ↗
               </a>
-              <p className="text-muted">
+              <p className="mt-2 text-muted">
                 The transaction calldata is this receipt hash, so the decision provably existed at
                 that block&apos;s timestamp.
               </p>
@@ -176,16 +178,12 @@ export function Receipts() {
         Receipt log
       </SectionTitle>
 
-      <div className="mb-4 flex flex-wrap gap-2 text-xs">
+      <div className="mb-4 flex flex-wrap gap-2">
         {["all", ...arms].map((id) => (
           <button
             key={id}
             onClick={() => setArm(id)}
-            className={`rounded border px-2.5 py-1 transition-colors ${
-              arm === id
-                ? "border-accent/50 text-accent"
-                : "border-edge text-muted hover:text-ink"
-            }`}
+            className={`pill ${arm === id ? "is-active" : ""}`}
           >
             {id}
           </button>

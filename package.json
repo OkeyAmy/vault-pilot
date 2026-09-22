@@ -5,7 +5,9 @@
   "type": "module",
   "description": "Headless RWA treasury autopilot for IXS vaults, driven by SERV Reasoning, with a model-configuration tournament and verifiable receipts.",
   "scripts": {
-    "dev": "tsx --env-file=.env src/agent.ts",
+    "start": "node scripts/dev.mjs",
+    "dev": "node scripts/dev.mjs",
+    "agent": "tsx --env-file=.env src/agent.ts",
     "epoch": "tsx --env-file=.env src/tournament.ts",
     "api": "tsx --env-file=.env src/api.ts",
     "ui": "pnpm --filter vault-pilot-ui dev",

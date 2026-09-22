@@ -17,13 +17,15 @@ function YieldStrip({ yields }: { yields: VaultYield[] }) {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {yields.map((y) => (
           <Panel key={y.vaultId} className="p-4">
-            <div className="flex items-baseline justify-between">
-              <span className="text-sm text-ink">{y.vaultId}</span>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                {y.vaultId}
+              </span>
               {y.apyBps === best ? (
-                <span className="text-[10px] uppercase tracking-wider text-accent">best</span>
+                <span className="chip chip-accent">best</span>
               ) : null}
             </div>
-            <div className="tabular mt-2 text-2xl text-ink">{apy(y.apyBps)}</div>
+            <div className="tabular mt-2 text-2xl font-semibold text-ink">{apy(y.apyBps)}</div>
             <div className="mt-1 text-xs text-muted">tvl {usd(y.tvlUsd)}</div>
           </Panel>
         ))}
@@ -40,45 +42,41 @@ function YieldStrip({ yields }: { yields: VaultYield[] }) {
 function StandingsTable({ rows }: { rows: LeaderboardRow[] }) {
   return (
     <Panel className="overflow-x-auto">
-      <table className="w-full min-w-[720px] text-sm">
+      <table className="table-grid min-w-[720px]">
         <thead>
-          <tr className="border-b border-edge text-left text-xs uppercase tracking-wider text-muted">
-            <th className="px-4 py-3 font-normal">arm</th>
-            <th className="px-4 py-3 font-normal">model</th>
-            <th className="px-4 py-3 text-right font-normal">epochs</th>
-            <th className="px-4 py-3 text-right font-normal">rebalances</th>
-            <th className="px-4 py-3 text-right font-normal">cumulative Δ</th>
-            <th className="px-4 py-3 text-right font-normal">cost/decision</th>
-            <th className="px-4 py-3 text-right font-normal">compliance</th>
+          <tr>
+            <th>arm</th>
+            <th>model</th>
+            <th className="text-right">epochs</th>
+            <th className="text-right">rebalances</th>
+            <th className="text-right">cumulative Δ</th>
+            <th className="text-right">cost/decision</th>
+            <th className="text-right">compliance</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={row.model_id} className="border-b border-edge/50 last:border-0">
-              <td className="px-4 py-3">
+            <tr key={row.model_id}>
+              <td>
                 <span className="text-muted">{index + 1}.</span>{" "}
-                <span className="text-ink">{row.model_id}</span>
-                {row.shadow_agent ? (
-                  <span className="ml-2 rounded border border-accent/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-accent">
-                    shadow
-                  </span>
-                ) : null}
+                <span className="font-medium text-ink">{row.model_id}</span>
+                {row.shadow_agent ? <span className="chip chip-accent ml-2">shadow</span> : null}
               </td>
-              <td className="px-4 py-3 text-muted">{row.reasoning_model}</td>
-              <td className="tabular px-4 py-3 text-right">{row.epochs}</td>
-              <td className="tabular px-4 py-3 text-right">{row.rebalances}</td>
+              <td className="text-muted">{row.reasoning_model}</td>
+              <td className="tabular text-right">{row.epochs}</td>
+              <td className="tabular text-right">{row.rebalances}</td>
               <td
-                className={`tabular px-4 py-3 text-right ${
-                  row.cumulative_yield_delta_bps >= 0 ? "text-accent" : "text-bad"
+                className={`tabular text-right font-medium ${
+                  row.cumulative_yield_delta_bps >= 0 ? "text-good" : "text-bad"
                 }`}
               >
                 {signedBps(row.cumulative_yield_delta_bps)}
               </td>
-              <td className="tabular px-4 py-3 text-right text-muted">
+              <td className="tabular text-right text-muted">
                 {costUsd(row.cost_per_decision_usd)}
               </td>
               <td
-                className={`tabular px-4 py-3 text-right ${
+                className={`tabular text-right ${
                   row.guard_failures > 0 ? "text-warn" : "text-muted"
                 }`}
               >
@@ -105,13 +103,15 @@ export function Tournament() {
   return (
     <div className="space-y-10">
       <section>
-        <h1 className="text-lg text-ink">Autonomous RWA treasury autopilot</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
+        <h1 className="text-xl font-bold uppercase tracking-[0.14em] text-ink md:text-2xl">
+          Autonomous RWA treasury autopilot
+        </h1>
+        <p className="mt-3 max-w-3xl text-sm leading-7 text-muted">
           Each epoch, every arm reasons over the same live yield snapshot under the same policy.
           A deterministic guard chain re-checks the result before it is recorded, and each receipt
           hash is published onchain so the decision provably predates its outcome.{" "}
-          <span className="text-ink">The capital is notional.</span> The yields, the reasoning, the
-          policy enforcement and the timestamps are real.
+          <span className="font-medium text-ink">The capital is notional.</span> The yields, the
+          reasoning, the policy enforcement and the timestamps are real.
         </p>
       </section>
 

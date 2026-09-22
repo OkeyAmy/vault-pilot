@@ -4,7 +4,7 @@ import { Panel } from "./shell";
 
 const LEVEL_COLOR = {
   info: "text-muted",
-  ok: "text-accent",
+  ok: "text-good",
   warn: "text-warn",
   error: "text-bad",
 } as const;
@@ -25,7 +25,7 @@ function Readiness({ preflight }: { preflight: Preflight }) {
       <p className="text-muted">
         endpoint <span className="text-ink">{preflight.reasoning.baseUrl}</span>
         {preflight.reasoning.servToolsActive ? (
-          <span className="text-accent"> · serv tools active</span>
+          <span className="text-good"> · serv tools active</span>
         ) : (
           <span> · serv tools inactive for this endpoint</span>
         )}
@@ -106,11 +106,7 @@ export function RunPanel({ onRunComplete }: { onRunComplete: () => void }) {
         <button
           onClick={() => void start()}
           disabled={running || starting || blocked}
-          className={`rounded border px-3 py-1.5 text-sm transition-colors ${
-            running || starting || blocked
-              ? "cursor-not-allowed border-edge text-muted"
-              : "border-accent/50 text-accent hover:bg-accent/10"
-          }`}
+          className="btn"
         >
           {running ? "running epoch…" : starting ? "starting…" : "run epoch"}
         </button>
@@ -124,9 +120,9 @@ export function RunPanel({ onRunComplete }: { onRunComplete: () => void }) {
         </span>
 
         {run?.phase === "done" ? (
-          <span className="ml-auto text-xs text-accent">last run completed</span>
+          <span className="ml-auto text-xs font-medium text-good">last run completed</span>
         ) : run?.phase === "error" ? (
-          <span className="ml-auto text-xs text-bad">last run failed</span>
+          <span className="ml-auto text-xs font-medium text-bad">last run failed</span>
         ) : null}
       </div>
 
@@ -134,12 +130,9 @@ export function RunPanel({ onRunComplete }: { onRunComplete: () => void }) {
       {preflight ? <Readiness preflight={preflight} /> : null}
 
       {run && run.steps.length > 0 ? (
-        <div
-          ref={logRef}
-          className="mt-3 max-h-56 overflow-y-auto rounded border border-edge bg-base p-3"
-        >
+        <div ref={logRef} className="log-console mt-3 max-h-56 overflow-y-auto p-3 text-xs">
           {run.steps.map((step, i) => (
-            <div key={i} className="flex gap-2 py-0.5 text-xs leading-relaxed">
+            <div key={i} className="flex gap-2 py-0.5 leading-relaxed">
               <span className="shrink-0 text-muted">
                 {new Date(step.at).toLocaleTimeString([], {
                   hour: "2-digit",
@@ -147,18 +140,14 @@ export function RunPanel({ onRunComplete }: { onRunComplete: () => void }) {
                   second: "2-digit",
                 })}
               </span>
-              {step.arm ? <span className="shrink-0 text-ink">[{step.arm}]</span> : null}
+              {step.arm ? <span className="shrink-0 font-semibold text-ink">[{step.arm}]</span> : null}
               <span className={LEVEL_COLOR[step.level]}>{step.message}</span>
             </div>
           ))}
         </div>
       ) : null}
 
-      {run?.error ? (
-        <p className="mt-3 text-xs text-bad">
-          {run.error}
-        </p>
-      ) : null}
+      {run?.error ? <p className="mt-3 text-xs text-bad">{run.error}</p> : null}
     </Panel>
   );
 }
