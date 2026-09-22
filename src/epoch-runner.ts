@@ -63,7 +63,8 @@ export async function runEpochForModel(params: {
     userPrompt: buildUserPrompt({
       epoch,
       currentAllocation: preAllocation,
-      yields: yields.map((y) => ({ vaultId: y.vaultId, apyBps: y.apyBps, tvlUsd: y.tvlUsd })),
+      yields,
+      vaults: policy.vaults,
     }),
   });
 

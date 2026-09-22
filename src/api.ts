@@ -9,6 +9,7 @@ import { runTournamentEpoch } from "./epoch-runner.js";
 import { runState } from "./run-state.js";
 import { servToolsSupported, resolvedBaseUrl } from "./reasoning/serv-client.js";
 import { startScheduler, type SchedulerHandle } from "./scheduler.js";
+import { fetchModelCatalogue } from "./reasoning/model-catalogue.js";
 
 const PORT = Number(process.env.API_PORT ?? 8787);
 
@@ -175,6 +176,19 @@ export function startReadApi(options: { withScheduler?: boolean } = {}) {
               name: m.name,
               model: m.model,
               shadow_agent: m.useShadowAgent,
+            })),
+          });
+        }
+
+        case "/api/models": {
+          const catalogue = await fetchModelCatalogue();
+          const onlyFree = url.searchParams.get("free") === "true";
+          const active = new Set(loadModelConfigs().map((m) => m.model));
+          return json(res, 200, {
+            active: [...active],
+            models: (onlyFree ? catalogue.filter((m) => m.free) : catalogue).map((m) => ({
+              ...m,
+              inUse: active.has(m.id),
             })),
           });
         }

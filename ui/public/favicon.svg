@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="VAULT-PILOT">
+  <!-- Paper field -->
+  <rect width="64" height="64" fill="#e6e4de" />
+  <!-- Receipt sheet with torn bottom edge -->
+  <path
+    d="M14 8 H50 V48 l-6 4 l-6 -4 l-6 4 l-6 -4 l-6 4 l-6 -4 Z"
+    fill="#f7f6f2"
+    stroke="#141414"
+    stroke-width="3"
+    stroke-linejoin="miter"
+  />
+  <!-- Header band -->
+  <rect x="14" y="8" width="36" height="11" fill="#141414" />
+  <!-- Allocation bar -->
+  <rect x="20" y="28" width="17" height="7" fill="#3b66d9" />
+  <!-- Ledger line -->
+  <rect x="20" y="39" width="11" height="3" fill="#141414" />
+  <!-- Anchor seal -->
+  <circle cx="47" cy="47" r="9" fill="#3b66d9" stroke="#f7f6f2" stroke-width="2.5" />
+</svg>

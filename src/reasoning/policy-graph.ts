@@ -68,7 +68,12 @@ export function buildSystemPrompt(policy: Policy): string {
     `- gross_cap (sum of all allocations): ${policy.gross_cap}`,
     `- only rebalance if the best available spread vs. the current allocation exceeds ${policy.min_rebalance_spread_bps}bps`,
     "",
-    "Weigh yield against credit risk: private and structured credit carry higher default risk than tokenized treasuries, so a higher APY there does not automatically justify a move.",
+    "This is a risk-adjusted decision, not a yield-maximisation exercise. Weigh:",
+    "- Credit risk: private and structured credit carry real default risk; tokenized treasuries are far safer. A higher APY does not by itself justify a move.",
+    "- Liquidity and concentration: a vault with very low TVL cannot absorb a large allocation without becoming a concentration risk.",
+    "- Uncertainty: a vault whose apy_status is insufficient_history has no observed yield yet. Decide deliberately whether unproven yield is worth capital, and say why in your rationale.",
+    "",
+    "State the trade-off you actually made in the rationale, including what you chose not to do.",
     "Only include vaults you are actively allocating to in target_allocation; omitted vaults are treated as 0.",
     "Set should_rebalance=false and keep target_allocation equal to the current allocation if no move clears the spread threshold.",
   ].join("\n");
@@ -77,16 +82,39 @@ export function buildSystemPrompt(policy: Policy): string {
 export function buildUserPrompt(input: {
   epoch: number;
   currentAllocation: Record<string, number>;
-  yields: { vaultId: string; apyBps: number; tvlUsd: number }[];
+  yields: {
+    vaultId: string;
+    apyBps: number;
+    apyKnown?: boolean;
+    tvlUsd: number;
+    sharePrice?: number;
+  }[];
+  vaults: VaultDef[];
 }): string {
+  const byId = new Map(input.vaults.map((v) => [v.vaultId, v]));
+
+  const vaultData = Object.fromEntries(
+    input.yields.map((y) => {
+      const def = byId.get(y.vaultId);
+      const known = y.apyKnown !== false;
+      return [
+        y.vaultId,
+        {
+          asset_class: def?.assetClass ?? "unknown",
+          // An unproven vault reports no yield rather than a misleading zero;
+          // deciding what to do with that uncertainty is part of the task.
+          apy_bps: known ? y.apyBps : null,
+          apy_status: known ? "observed" : "insufficient_history",
+          tvl_usd: Math.round(y.tvlUsd),
+          ...(y.sharePrice === undefined ? {} : { share_price: y.sharePrice }),
+          read_from: def?.source === "ixs" ? "onchain_erc4626" : "public_index",
+        },
+      ];
+    }),
+  );
+
   return JSON.stringify(
-    {
-      epoch: input.epoch,
-      current_allocation: input.currentAllocation,
-      live_vault_data: Object.fromEntries(
-        input.yields.map((y) => [y.vaultId, { apy_bps: y.apyBps, tvl_usd: y.tvlUsd }]),
-      ),
-    },
+    { epoch: input.epoch, current_allocation: input.currentAllocation, vaults: vaultData },
     null,
     2,
   );

@@ -21,8 +21,14 @@ const PolicySchema = z.object({
           "savings",
           "structured-credit",
         ]),
-        poolId: z.string().min(1),
-      }),
+        source: z.enum(["ixs", "index"]).default("index"),
+        address: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
+        poolId: z.string().min(1).optional(),
+      })
+        .refine((v) => (v.source === "ixs" ? Boolean(v.address) : Boolean(v.poolId)), {
+          message:
+            'vaults with source "ixs" need an `address`; vaults with source "index" need a `poolId`',
+        }),
     )
     .min(2),
 });

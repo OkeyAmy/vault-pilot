@@ -16,19 +16,32 @@ gross_cap: 1.0
 # Pinned vault set. poolId is the live yield-source identifier; APY and TVL
 # for each vault are fetched live at every epoch.
 vaults:
+  # IXS permissionless ERC-4626 vault, read directly onchain. Yield is derived
+  # from the change in assets-per-share between observations, so it is
+  # reported as unknown until at least two samples exist.
+  - vaultId: "ixs-ixv1"
+    label: "IXS Agentic Vault (ixv1)"
+    assetClass: "private-credit"
+    source: "ixs"
+    address: "0xc975a3EeF2e49F8eDdEf585340C43f15300fCB82"
+
   - vaultId: "buidl"
     label: "BlackRock USD Institutional Digital Liquidity"
     assetClass: "tokenized-treasury"
+    source: "index"
     poolId: "b663ca59-c7e6-4435-ae4a-28d339ce6a15"
   - vaultId: "usdy"
     label: "Ondo US Dollar Yield"
     assetClass: "tokenized-treasury"
+    source: "index"
     poolId: "ac61ee82-2fe4-4f9b-a9cd-7fb33f598859"
   - vaultId: "maple-usdc"
     label: "Maple USDC"
     assetClass: "private-credit"
+    source: "index"
     poolId: "43641cf5-a92e-416b-bce9-27113d3c0db6"
   - vaultId: "centrifuge-usds"
     label: "Centrifuge USDS"
     assetClass: "structured-credit"
+    source: "index"
     poolId: "ff1bb959-d160-4906-bad2-d3e37a1e92e8"

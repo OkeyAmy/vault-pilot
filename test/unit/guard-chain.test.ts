@@ -8,9 +8,9 @@ const policy: Policy = {
   min_rebalance_spread_bps: 15,
   gross_cap: 1.0,
   vaults: [
-    { vaultId: "buidl", label: "BUIDL", assetClass: "tokenized-treasury", poolId: "p1" },
-    { vaultId: "usdy", label: "USDY", assetClass: "tokenized-treasury", poolId: "p2" },
-    { vaultId: "maple-usdc", label: "Maple", assetClass: "private-credit", poolId: "p3" },
+    { vaultId: "buidl", label: "BUIDL", assetClass: "tokenized-treasury", source: "index", poolId: "p1" },
+    { vaultId: "usdy", label: "USDY", assetClass: "tokenized-treasury", source: "index", poolId: "p2" },
+    { vaultId: "maple-usdc", label: "Maple", assetClass: "private-credit", source: "index", poolId: "p3" },
   ],
 };
 

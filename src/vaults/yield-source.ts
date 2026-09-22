@@ -1,4 +1,5 @@
 import type { VaultDef, VaultYield } from "./types.js";
+import { fetchIXSYields } from "./ixs-source.js";
 
 export class YieldSourceError extends Error {}
 
@@ -47,12 +48,37 @@ async function fetchPools(): Promise<Map<string, LlamaPool>> {
   return byPoolId;
 }
 
-/** Current live APY + TVL for every configured vault. */
+/**
+ * Live yields for every configured vault, whichever source each one uses.
+ * IXS vaults are read onchain; the rest come from the public index. Results
+ * are returned in the policy's vault order so prompts stay stable.
+ */
 export async function fetchCurrentYields(vaults: VaultDef[]): Promise<VaultYield[]> {
+  const ixsVaults = vaults.filter((v) => v.source === "ixs");
+  const indexVaults = vaults.filter((v) => v.source !== "ixs");
+
+  const [ixsYields, indexYields] = await Promise.all([
+    ixsVaults.length > 0 ? fetchIXSYields(ixsVaults) : Promise.resolve([]),
+    indexVaults.length > 0 ? fetchIndexYields(indexVaults) : Promise.resolve([]),
+  ]);
+
+  const byId = new Map([...ixsYields, ...indexYields].map((y) => [y.vaultId, y]));
+  return vaults.map((v) => {
+    const found = byId.get(v.vaultId);
+    if (!found) throw new YieldSourceError(`No yield resolved for vault "${v.vaultId}".`);
+    return found;
+  });
+}
+
+/** Current live APY + TVL for index-sourced vaults. */
+async function fetchIndexYields(vaults: VaultDef[]): Promise<VaultYield[]> {
   const byPoolId = await fetchPools();
   const observedAt = new Date().toISOString();
 
   return vaults.map((vault) => {
+    if (!vault.poolId) {
+      throw new YieldSourceError(`Vault "${vault.vaultId}" has no poolId configured.`);
+    }
     const pool = byPoolId.get(vault.poolId);
     if (!pool) {
       throw new YieldSourceError(
@@ -67,6 +93,7 @@ export async function fetchCurrentYields(vaults: VaultDef[]): Promise<VaultYield
       vaultId: vault.vaultId,
       poolId: vault.poolId,
       apyBps: Math.round(apy * 100),
+      apyKnown: true,
       tvlUsd: pool.tvlUsd ?? 0,
       observedAt,
     };

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 140" role="img" aria-label="VAULT-PILOT — autonomous RWA treasury autopilot">
+  <rect width="560" height="140" fill="#e6e4de" />
+  <rect x="0.5" y="0.5" width="559" height="139" fill="none" stroke="#141414" stroke-width="1" />
+
+  <!-- Receipt mark -->
+  <g>
+    <path
+      d="M40 30 H116 V112 l-9.5 6.5 l-9.5 -6.5 l-9.5 6.5 l-9.5 -6.5 l-9.5 6.5 l-9.5 -6.5 l-9.5 6.5 l-9.5 -6.5 Z"
+      fill="#f7f6f2"
+      stroke="#141414"
+      stroke-width="4"
+      stroke-linejoin="miter"
+    />
+    <rect x="40" y="30" width="76" height="18" fill="#141414" />
+    <rect x="50" y="62" width="36" height="12" fill="#3b66d9" />
+    <rect x="50" y="84" width="24" height="6" fill="#141414" />
+    <circle cx="108" cy="108" r="14" fill="#3b66d9" stroke="#f7f6f2" stroke-width="4" />
+  </g>
+
+  <!-- Wordmark -->
+  <text
+    x="148"
+    y="72"
+    fill="#141414"
+    font-family="Inter, system-ui, -apple-system, sans-serif"
+    font-size="42"
+    font-weight="800"
+    letter-spacing="5"
+  >VAULT-PILOT</text>
+  <!-- Accent rule -->
+  <rect x="148" y="86" width="64" height="5" fill="#3b66d9" />
+  <!-- Tagline -->
+  <text
+    x="148"
+    y="114"
+    fill="#5f5c55"
+    font-family="Inter, system-ui, -apple-system, sans-serif"
+    font-size="13"
+    font-weight="600"
+    letter-spacing="3.6"
+  >AUTONOMOUS RWA TREASURY AUTOPILOT</text>
+</svg>
