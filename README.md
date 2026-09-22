@@ -46,12 +46,34 @@ pnpm epoch                        # run one tournament epoch
 python3 scripts/verify.py --all   # verify every receipt
 ```
 
-To see it in a browser:
+Or drive it from the browser:
 
 ```bash
-pnpm api     # read API on :8787
+pnpm api     # API on :8787
 pnpm ui      # interface on :5173
 ```
+
+Open `localhost:5173` and press **run epoch**. The interface fetches live yields,
+requests a decision from every arm, applies the guard chain, writes signed
+receipts and anchors them — streaming each step as it happens.
+
+Before you run anything it tells you what is and is not configured: a missing
+key is reported as a blocker and the button stays disabled, an unfunded
+anchoring wallet as a warning. You never have to guess why a run would fail.
+
+### Pointing at a different endpoint
+
+`SERV_BASE_URL` and `TOURNAMENT_MODELS` are both environment-driven, so any
+OpenAI-compatible endpoint works without code changes — set the base URL, the
+key, and model ids valid for that endpoint.
+
+The `serv_*` tools are SERV-specific: SERV interprets and strips them before
+the request reaches the model, while another endpoint would forward them as
+real tools. They are therefore sent only when the configured endpoint
+implements them (auto-detected; force with `SERV_TOOLS=on|off`). When they are
+inactive the shadow arm is identical to its base arm, and receipts record
+`shadow_agent: false` accordingly rather than claiming a validation loop that
+never ran.
 
 ### Enabling onchain anchoring
 

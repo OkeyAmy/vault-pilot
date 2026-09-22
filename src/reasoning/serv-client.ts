@@ -37,6 +37,22 @@ const SUBMIT_DECISION_TOOL = {
 const DEFAULT_BASE_URL = "https://inference-api.openserv.ai/v1";
 
 /**
+ * Whether the configured endpoint implements the `serv_*` tool convention.
+ * Override with SERV_TOOLS=on|off when pointing at a gateway that proxies
+ * to SERV under a different hostname.
+ */
+export function resolvedBaseUrl(): string {
+  return process.env.SERV_BASE_URL ?? DEFAULT_BASE_URL;
+}
+
+export function servToolsSupported(baseUrl: string): boolean {
+  const override = process.env.SERV_TOOLS?.trim().toLowerCase();
+  if (override === "on") return true;
+  if (override === "off") return false;
+  return baseUrl.includes("openserv.ai");
+}
+
+/**
  * Calls the OpenAI-compatible chat completions endpoint, forcing a
  * `submit_decision` tool call so every model returns the same structured
  * shape. Tools whose name begins with `serv_` are interpreted by SERV and
@@ -55,14 +71,20 @@ export async function requestDecision(params: {
   const baseUrl = process.env.SERV_BASE_URL ?? DEFAULT_BASE_URL;
 
   const tools: unknown[] = [SUBMIT_DECISION_TOOL];
-  // Vault labels and pool metadata come from a third-party feed and are
-  // interpolated into the prompt, so the system prompt is hardened against
-  // injection on every call.
-  if (process.env.DISABLE_PROMPT_GUARD !== "true") {
-    tools.push({ type: "function", function: { name: "serv_prompt_guard", parameters: {} } });
-  }
-  if (params.model.useShadowAgent) {
-    tools.push({ type: "function", function: { name: "serv_shadow_agent", parameters: {} } });
+
+  // `serv_`-prefixed tools are interpreted and stripped by SERV before the
+  // request reaches the model. Any other OpenAI-compatible endpoint would
+  // forward them as real tools, so they are only sent when the configured
+  // endpoint actually implements them.
+  if (servToolsSupported(baseUrl)) {
+    if (process.env.DISABLE_PROMPT_GUARD !== "true") {
+      // Vault labels and pool metadata come from a third-party feed and are
+      // interpolated into this prompt, so it is hardened against injection.
+      tools.push({ type: "function", function: { name: "serv_prompt_guard", parameters: {} } });
+    }
+    if (params.model.useShadowAgent) {
+      tools.push({ type: "function", function: { name: "serv_shadow_agent", parameters: {} } });
+    }
   }
 
   const response = await fetch(`${baseUrl}/chat/completions`, {

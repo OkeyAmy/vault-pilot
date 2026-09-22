@@ -1,6 +1,8 @@
+import { useCallback, useState } from "react";
 import { api, type LeaderboardRow, type VaultYield } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import { Panel, SectionTitle, Empty, ErrorNote } from "../components/shell";
+import { RunPanel } from "../components/RunPanel";
 import { apy, usd, signedBps, costUsd, pct, timeAgo } from "../lib/format";
 
 function YieldStrip({ yields }: { yields: VaultYield[] }) {
@@ -92,8 +94,13 @@ function StandingsTable({ rows }: { rows: LeaderboardRow[] }) {
 }
 
 export function Tournament() {
-  const yields = useApi(() => api.yields(), 60_000);
-  const board = useApi(() => api.leaderboard(), 30_000);
+  // Bumped when a run finishes so yields and standings refetch immediately
+  // rather than waiting out their poll interval.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const onRunComplete = useCallback(() => setRefreshKey((k) => k + 1), []);
+
+  const yields = useApi(() => api.yields(), 60_000, [refreshKey]);
+  const board = useApi(() => api.leaderboard(), 30_000, [refreshKey]);
 
   return (
     <div className="space-y-10">
@@ -106,6 +113,10 @@ export function Tournament() {
           <span className="text-ink">The capital is notional.</span> The yields, the reasoning, the
           policy enforcement and the timestamps are real.
         </p>
+      </section>
+
+      <section>
+        <RunPanel onRunComplete={onRunComplete} />
       </section>
 
       <section>
