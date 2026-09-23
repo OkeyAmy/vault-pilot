@@ -47,6 +47,10 @@ afterwards and the check fails loudly.
 
 ## Architecture
 
+An **arm** is one contender in the model tournament — a single model (or a
+model + its shadow-validation pair) answering the same decision each epoch.
+The UI, leaderboard, and API all use “arm” for that unit.
+
 ```
                          ┌──────────────────────────┐
                          │         Browser          │
@@ -55,7 +59,7 @@ afterwards and the check fails loudly.
                          └────────────┬─────────────┘
                                       │  JSON over HTTP
                          ┌────────────┴─────────────┐
-                         │     API  (loopback)      │
+                         │     API  (+ ui/dist)     │
                          │  /preflight  /leaderboard│
                          │  /receipts   /yields     │
                          │  /models     /policy     │
@@ -79,21 +83,22 @@ afterwards and the check fails loudly.
     │ ERC-4626 read  │  │ N arms,    │  │ enforced │ │ pre/post,     │
     │ convertTo      │  │ identical  │  │ in code: │ │ rationale,    │
     │ Assets()       │  │ snapshot,  │  │ caps,    │ │ confidence,   │
-    │ on BNB Chain   │  │ forced     │  │ unknown  │ │ cost, guards  │
-    ├────────────────┤  │ submit_    │  │ vaults,  │ └┬──────────────┘
-    │ public yield   │  │ decision   │  │ NaN,     │  │
-    │ index: BUIDL,  │  │ tool call  │  │ negative │  │ SHA-256
-    │ USDY, Maple,   │  └─────┬──────┘  └─┬────────┘  │
-    │ Centrifuge     │        │           │           │
+    │ on BNB Chain   │  │ forced     │  │ spread,  │ │ cost, guards  │
+    ├────────────────┤  │ submit_    │  │ unknown  │ └┬──────────────┘
+    │ public yield   │  │ decision   │  │ vaults,  │  │
+    │ index: BUIDL,  │  │ tool call  │  │ NaN,     │  │ SHA-256
+    │ USDY, Maple,   │  └─────┬──────┘  │ negative │  │
+    │ Centrifuge     │        │         └─┬────────┘  │
     └────────────────┘        │           │      ┌────┴──────────────┐
                               │           │      │   ⑤ ANCHOR        │
                      ┌────────┴───┐  violation   │ zero-value        │
-                     │ gpt-5.6-   │  → hold      │ self-send,        │
-                     │ luna       │  previous    │ hash as calldata  │
+                     │ gpt-5.4-   │  → hold      │ self-send,        │
+                     │ mini       │  previous    │ hash as calldata  │
                      │ + shadow   │  allocation  │                   │
                      │ claude-    │              │ block timestamp = │
                      │ haiku-4.5  │              │ proof of          │
-                     │ gemini-... │              │ precedence        │
+                     │ gemini-    │              │ precedence        │
+                     │ 3.5-flash  │              │                   │
                      └────────────┘              └────┬──────────────┘
                                                       │
                                                       ▼
@@ -167,27 +172,15 @@ The site needs a **persistent** host (VPS, Fly, Railway, a long-lived VM):
 receipts live on disk and the scheduler must survive restarts. Static-only
 hosts cannot run the loop.
 
-#### Render
+Two things a host must provide, or the record breaks:
 
-`render.yaml` describes the whole service, so the dashboard does the rest:
-**New → Blueprint**, point it at the repository, and fill in the three values
-the file deliberately withholds — `SERV_API_KEY`, `TOURNAMENT_MODELS`, and
-`ANCHOR_PRIVATE_KEY` (omit the last to run without onchain proof). Everything
-afterwards — logs, redeploys, changing a key — is a browser tab.
-
-Two details the blueprint encodes and the platform will not infer:
-
-- **A disk, mounted at `/var/data`.** `RECEIPTS_ROOT` and `IXS_HISTORY_PATH`
-  point inside it. Without the disk, each redeploy erases every receipt and
-  the tournament restarts at epoch 1.
-- **A paid instance.** Render suspends a free service once traffic stops; a
-  suspended agent stops thinking, and the missing epochs show up as gaps in
-  the tape.
-
-Receipts are gitignored, so a fresh deploy begins with an empty tournament and
-builds its own record from the first epoch forward. The IXS vault reports
-`apyKnown: false` until the disk has accumulated enough share-price
-observations to measure a rate — the same cold start any new checkout has.
+- **A writable disk.** Point `RECEIPTS_ROOT` and `IXS_HISTORY_PATH` at it.
+  Without persistence, every redeploy erases every receipt and the tournament
+  restarts at epoch 1.
+- **A process that stays up.** Receipts are gitignored, so a fresh deploy
+  begins with an empty tournament and builds its own record. The IXS vault
+  reports `apyKnown: false` until enough share-price observations have
+  accumulated — the same cold start any new checkout has.
 
 Serverless platforms (Vercel, Netlify Functions, Cloudflare Workers) cannot
 host this: there is no process between requests to run the scheduler, function
@@ -202,7 +195,8 @@ receipts.
 Chain — asking the contract what one share is worth. The rest come from a public
 yield index. Nothing is invented; there is no synthetic data in this project.
 
-**② Reason.** Every arm gets identical numbers and must answer in a fixed shape:
+**② Reason.** Each arm — one model’s run of this decision — gets identical
+numbers and must answer in a fixed shape:
 target allocation, rationale, confidence, risk score. It is asked to weigh three
 things a naive optimiser ignores:
 
@@ -227,8 +221,9 @@ verdict.
 
 ## Why several models at once
 
-Arms run the same decision on the same data every epoch — not to crown a winner,
-but because **disagreement is the signal.** One real epoch:
+Every **arm** is a separate model (or model + shadow pair) running the same
+decision on the same data every epoch — not to crown a winner, but because
+**disagreement is the signal.** One real epoch:
 
 > **nemotron-super** kept 20% in the new IXS vault and moved toward
 > higher-yielding private credit. Risk score 0.6.
@@ -237,10 +232,15 @@ but because **disagreement is the signal.** One real epoch:
 > concentration and zero observed yield history"* — a liquidity risk regardless
 > of headline rate. Risk score 0.35.
 
+*These nemotron arms (and a few other free open-source models) were used for
+testing only. The tournament runs every epoch — multiply that by four arms and
+the bill is real — so free models keep development and demos affordable. Point
+`TOURNAMENT_MODELS` at paid arms when you want the leaderboard to score them.*
+
 Neither is obviously wrong. You can watch how differently models weigh risk when
 the answer is not obvious, and every judgement is on the record.
 
-The leaderboard ranks by yield captured but shows **cost per decision** and
+The leaderboard ranks each arm by yield captured but shows **cost per decision** and
 **rule-compliance** beside it. An agent that earns more by breaking rules more
 often is not better, and the table refuses to hide that.
 
@@ -252,7 +252,7 @@ often is not better, and the table refuses to hide that.
 |---|---|---|
 | `GET` | `/api/health` | Liveness and whether anchoring is on |
 | `GET` | `/api/preflight` | What is configured, what blocks a run |
-| `GET` | `/api/policy` | Allocation rules, vault set, active arms |
+| `GET` | `/api/policy` | Allocation rules, vault set, tournament arms |
 | `GET` | `/api/yields` | Live APY and TVL per vault |
 | `GET` | `/api/receipts` | Signed receipt log, optionally `?model=` |
 | `GET` | `/api/leaderboard` | Arm rankings |
@@ -260,9 +260,11 @@ often is not better, and the table refuses to hide that.
 | `GET` | `/api/epoch/status` | Current run, step log, next scheduled run |
 | `POST` | `/api/epoch/run` | Extra epoch on demand (needs `OPERATOR_TOKEN`) |
 
-The API binds to loopback and names a single allowed UI origin. The only
-state-changing route requires a token and is closed unless one is set — the
-scheduler is the normal driver, so nothing is lost by keeping it shut.
+The API defaults to loopback and allows one cross-origin UI origin
+(`UI_ORIGIN`). When the API serves the built interface itself, same-origin
+requests need no configuration. The only state-changing route requires a token
+and is closed unless one is set — the scheduler is the normal driver, so
+nothing is lost by keeping it shut.
 
 ## Environment
 
@@ -270,7 +272,7 @@ scheduler is the normal driver, so nothing is lost by keeping it shut.
 |---|---|---|
 | `SERV_API_KEY` | — | Key for the reasoning endpoint |
 | `SERV_BASE_URL` | `inference-api.openserv.ai/v1` | Any OpenAI-compatible endpoint |
-| `TOURNAMENT_MODELS` | 4 arms | `id:model:shadow:inPrice:outPrice`, comma-separated |
+| `TOURNAMENT_MODELS` | 4 arms | Contenders: `id:model:shadow:inPrice:outPrice` (see Architecture) |
 | `SERV_TOOLS` | auto | Force `serv_*` tool support `on`/`off` |
 | `EPOCH_INTERVAL_SECONDS` | `3600` | How often it decides (floor 30) |
 | `EPOCH_SCHEDULER` | on | `off` stops epochs, API stays up |
@@ -281,7 +283,7 @@ scheduler is the normal driver, so nothing is lost by keeping it shut.
 | `SETTLEMENT_MAX_PER_TX` | `10` | Ceiling per settlement transaction |
 | `OPERATOR_TOKEN` | — | Required for manual epoch triggering |
 | `API_HOST` / `API_PORT` | `127.0.0.1` / `8787` | API bind. `API_PORT` unset falls back to `PORT` |
-| `UI_ORIGIN` | `localhost:5173` | Allowed browser origin |
+| `UI_ORIGIN` | `http://localhost:5173` | Cross-origin UI allowed to read the API (same-origin needs none) |
 | `RECEIPTS_ROOT` | `receipts` | Where signed receipts are written |
 | `IXS_HISTORY_PATH` | `data/ixs-share-price-history.json` | IXS share-price observations |
 | `NET_CONNECT_ATTEMPT_TIMEOUT_MS` | `5000` | Per-address TCP handshake budget |
@@ -325,32 +327,37 @@ opt in with a key, or it does not happen.
 src/
   scheduler.ts          decides on its own clock, never overlapping
   epoch-runner.ts       read → reason → guard → record → anchor
-  api.ts                read API + status, loopback-bound
+  api.ts                read API + status + serves ui/dist
+  run-state.ts          in-process progress for status/UI polling
+  net-tuning.ts         wider TCP handshake budget for flaky links
   vaults/
     ixs-source.ts       reads IXS vaults off BNB Chain
     ixs-settlement.ts   real deposits / redemptions (opt-in)
     yield-source.ts     public index for non-IXS vaults
   reasoning/
-    guard-chain.ts      the rules a model cannot argue with
+    guard-chain.ts      caps + spread; the rules a model cannot argue with
     policy-graph.ts     the contract every model must fill in
     serv-client.ts      forced tool call, serv_* tools when supported
+    model-configs.ts    TOURNAMENT_MODELS → one entry per arm
     model-catalogue.ts  what the endpoint will actually serve
   storage/
     receipts.ts         canonical JSON + SHA-256
     anchor.ts           publishing fingerprints onchain
-    leaderboard.ts      arm rankings
+    leaderboard.ts      rankings across arms
   config/policy.yaml    caps, spread threshold, pinned vault set
 scripts/
   verify.py             the check anyone can run
   settle.ts             manual real settlement
   benchmark.py          agent vs. equal-split baseline
+  start.mjs             production entry: UI + API + scheduler
+  dev.mjs               local entry: API + Vite together
 ui/                     the interface
 ```
 
 ## Checks
 
 ```bash
-pnpm test              # 54 tests
+pnpm test              # 59 tests
 pnpm verify:onchain    # every receipt, against the chain
 pnpm benchmark         # agent vs. baseline
 ```
