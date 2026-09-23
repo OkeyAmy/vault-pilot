@@ -15,6 +15,25 @@
 
 ---
 
+## Demo
+
+<p align="center">
+  <a href="docs/demo.mp4">
+    <img src="docs/demo-poster.png" alt="Watch the VAULT-PILOT demo" width="960" />
+  </a>
+</p>
+
+<p align="center">
+  <video src="docs/demo.mp4" controls width="960" muted playsinline preload="metadata"></video>
+</p>
+
+<p align="center">
+  <a href="docs/demo.mp4"><b>▶ Watch the demo</b></a>
+  · 3:27 · 1920×1080 · autonomous tournament, receipts, onchain proof
+</p>
+
+---
+
 ## The idea in one minute
 
 You hold a company's idle cash. Tokenized treasury bills pay 3.8%. Private credit
@@ -240,9 +259,37 @@ the bill is real — so free models keep development and demos affordable. Point
 Neither is obviously wrong. You can watch how differently models weigh risk when
 the answer is not obvious, and every judgement is on the record.
 
-The leaderboard ranks each arm by yield captured but shows **cost per decision** and
-**rule-compliance** beside it. An agent that earns more by breaking rules more
-often is not better, and the table refuses to hide that.
+### What the leaderboard actually ranks
+
+**Held edge over the equal-weight baseline**, time-weighted.
+
+For each receipt, the arm's allocation and an equal-weight allocation across
+every policy vault are both priced on that receipt's own yield snapshot; the
+gap is that epoch's edge. Each edge is weighted by how long the allocation was
+actually held — from that receipt until the next one, and for the newest
+receipt until now.
+
+Two properties that matter, and one honest limitation:
+
+- **Holding is scored.** An arm parked in a good allocation keeps earning its
+  edge every epoch. The obvious alternative — summing each epoch's improvement
+  over the previous allocation — scores *rebalancing events*, so an arm that
+  makes one good move and then correctly sits still scores zero forever, and
+  the standings freeze after epoch one.
+- **Epoch count does not decide it.** Dividing by held time makes an arm with
+  three receipts directly comparable to one with thirty. Arms lose epochs to
+  upstream model outages, which is not a quality worth ranking.
+- **Most of the edge comes from what an arm refuses to hold.** The baseline
+  includes every vault at equal weight, a bleeding one included. A large
+  positive number is often avoidance, not selection — read it next to
+  `current_yield_bps`.
+
+`cumulative_yield_delta_bps` is still on every row and still checked by
+`verify.py`; it is simply no longer the ranking key.
+
+Cost per decision and rule-compliance sit beside the ranking. An agent that
+earns more by breaking rules more often is not better, and the table refuses
+to hide that.
 
 ---
 
