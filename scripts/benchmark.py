@@ -16,7 +16,7 @@ import argparse
 import json
 import os
 
-RECEIPTS_ROOT = "receipts"
+RECEIPTS_ROOT = os.environ.get("RECEIPTS_ROOT", "receipts")
 
 
 def weighted_yield_bps(allocation, yields_bps):

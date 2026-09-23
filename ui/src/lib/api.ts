@@ -1,4 +1,7 @@
-const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
+// Same-origin by default: in dev Vite proxies /api to the agent, and in
+// production the agent serves this bundle itself. Split deployments can
+// still point elsewhere with VITE_API_BASE_URL.
+const BASE = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export interface Vault {
   vaultId: string;
@@ -82,6 +85,8 @@ export interface LeaderboardRow {
   mean_risk_score: number;
   current_allocation: Record<string, number>;
   latest_rationale: string;
+  latest_epoch: number;
+  recent_yield_deltas_bps: number[];
   receipts_anchored: number;
   last_epoch_at: string;
 }

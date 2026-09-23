@@ -1,5 +1,6 @@
 import type { Allocation } from "../vaults/types.js";
-import type { Policy } from "./policy-graph.js";
+import type { Decision, Policy } from "./policy-graph.js";
+import { allocationsEqual, weightedYieldBps } from "../storage/portfolio.js";
 
 export interface GuardResult {
   passed: boolean;
@@ -58,10 +59,47 @@ export function spreadClearsThreshold(
 ): boolean {
   const yieldValues = Object.values(vaultYieldsBps);
   if (yieldValues.length === 0) return false;
-  const currentWeightedBps = Object.entries(currentAllocation).reduce(
-    (sum, [vaultId, fraction]) => sum + fraction * (vaultYieldsBps[vaultId] ?? 0),
-    0,
-  );
+  const currentWeightedBps = weightedYieldBps(currentAllocation, vaultYieldsBps);
   const bestVaultBps = Math.max(...yieldValues);
   return bestVaultBps - currentWeightedBps >= policy.min_rebalance_spread_bps;
+}
+
+export interface AppliedDecision {
+  postAllocation: Allocation;
+  passed: boolean;
+  violations: string[];
+}
+
+/**
+ * Applies a model decision under the full policy: allocation caps via
+ * runGuardChain, then the minimum rebalance spread when the model proposes
+ * an actual reallocation. Any violation holds the previous allocation.
+ * This — not the prompt — is what makes the policy deterministic.
+ */
+export function applyDecision(
+  decision: Decision,
+  preAllocation: Allocation,
+  vaultYieldsBps: Record<string, number>,
+  policy: Policy,
+): AppliedDecision {
+  const guard = runGuardChain(decision.target_allocation, policy);
+  const violations = [...guard.violations];
+
+  const wouldReallocate =
+    decision.should_rebalance &&
+    !allocationsEqual(preAllocation, decision.target_allocation);
+
+  if (guard.passed && wouldReallocate && !spreadClearsThreshold(preAllocation, vaultYieldsBps, policy)) {
+    const currentBps = weightedYieldBps(preAllocation, vaultYieldsBps);
+    const bestBps = Math.max(...Object.values(vaultYieldsBps));
+    violations.push(
+      `rebalance rejected: best available spread ${Math.round(bestBps - currentBps)}bps ` +
+        `does not clear min_rebalance_spread_bps ${policy.min_rebalance_spread_bps}`,
+    );
+  }
+
+  const passed = violations.length === 0;
+  const postAllocation =
+    passed && decision.should_rebalance ? decision.target_allocation : preAllocation;
+  return { postAllocation, passed, violations };
 }

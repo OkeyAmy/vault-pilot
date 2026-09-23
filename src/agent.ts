@@ -1,3 +1,4 @@
+import "./net-tuning.js";
 import { Agent, run } from "@openserv-labs/sdk";
 import { z } from "zod";
 import { loadPolicy } from "./config/load-policy.js";

@@ -1,0 +1,77 @@
+# VAULT-PILOT on Render — one persistent web service.
+#
+# The agent is autonomous: it wakes on its own schedule, fetches live yields,
+# asks every arm for a decision and anchors each receipt onchain. That needs a
+# process that stays alive between requests, so this is a Web Service and not
+# a static site or a function. Serverless hosts cannot run it.
+#
+# Receipts are the product of this system and they must outlive a redeploy, so
+# a disk is mounted and every writable path points inside it.
+
+services:
+  - type: web
+    name: vault-pilot
+    runtime: node
+    plan: starter # A free instance is suspended when idle; a suspended agent
+      # stops thinking, and the gaps show up as missing epochs.
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build:all
+    startCommand: pnpm start
+    healthCheckPath: /api/health
+
+    disk:
+      name: vault-pilot-state
+      mountPath: /var/data
+      sizeGB: 1
+
+    envVars:
+      # --- Bind ------------------------------------------------------------
+      # Render injects PORT and routes to it; the API falls back to PORT on
+      # its own, so API_PORT is deliberately left unset here. API_HOST must
+      # leave loopback or the health check never connects.
+      - key: API_HOST
+        value: 0.0.0.0
+
+      # --- Persistent state, all inside the mounted disk -------------------
+      - key: RECEIPTS_ROOT
+        value: /var/data/receipts
+      - key: IXS_HISTORY_PATH
+        value: /var/data/ixs-share-price-history.json
+
+      # --- Reasoning -------------------------------------------------------
+      # Secret. Set the value in the Render dashboard, never in this file.
+      - key: SERV_API_KEY
+        sync: false
+      - key: SERV_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: TOURNAMENT_MODELS
+        sync: false
+
+      # --- Onchain anchoring -----------------------------------------------
+      # Secret. The anchoring wallet signs zero-value testnet transactions
+      # whose calldata is a receipt hash; it never holds treasury capital.
+      # Leave unset to run without onchain proof.
+      - key: ANCHOR_PRIVATE_KEY
+        sync: false
+      - key: ANCHOR_CHAIN_ID
+        value: "11155111"
+
+      # --- Yields ----------------------------------------------------------
+      - key: YIELD_SOURCE_BASE_URL
+        value: https://yields.llama.fi
+      - key: TREASURY_EQUITY_USD
+        value: "1000000"
+
+      # --- Scheduler -------------------------------------------------------
+      # OPERATOR_TOKEN is deliberately absent: no one can force an epoch from
+      # the browser, so every decision on the record is one the agent chose
+      # to make.
+      - key: EPOCH_INTERVAL_SECONDS
+        value: "900"
+      - key: EPOCH_START_DELAY_SECONDS
+        value: "3"
+
+      # --- Outbound connections --------------------------------------------
+      # Per-address TCP handshake budget. Node's 250ms default is tight enough
+      # that a congested link fails every call as a bare "fetch failed".
+      - key: NET_CONNECT_ATTEMPT_TIMEOUT_MS
+        value: "5000"

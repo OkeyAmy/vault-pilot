@@ -17,5 +17,13 @@ export default defineConfig({
     // port would silently fail every request with a CORS error instead of
     // saying the port is taken, so refuse to start rather than move.
     strictPort: true,
+    // Dev behaves like production: the browser only ever talks to this
+    // origin, and /api is forwarded to the agent process.
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_PROXY ?? "http://127.0.0.1:8787",
+        changeOrigin: false,
+      },
+    },
   },
 });

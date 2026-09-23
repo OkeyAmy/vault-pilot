@@ -56,7 +56,14 @@ export type SignedReceipt = Receipt & {
 
 export const UNHASHED_KEYS = ["receipt_hash", "anchor"] as const;
 
-export const RECEIPTS_ROOT = "receipts";
+/**
+ * Where signed receipts live. Relative to the working directory by default,
+ * which is right for a checkout. A hosted deploy must point this at a mounted
+ * persistent disk — on an ephemeral filesystem every redeploy would erase the
+ * tournament's entire history, and a receipt that cannot be re-read is not
+ * evidence of anything.
+ */
+export const RECEIPTS_ROOT = process.env.RECEIPTS_ROOT ?? "receipts";
 
 /**
  * Canonical JSON: sorted keys, no insignificant whitespace, so identical

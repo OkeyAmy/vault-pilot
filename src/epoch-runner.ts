@@ -1,7 +1,7 @@
 import { loadPolicy } from "./config/load-policy.js";
 import { loadModelConfigs, estimateReasoningCostUsd, type ModelConfig } from "./reasoning/model-configs.js";
 import { buildSystemPrompt, buildUserPrompt, type Policy } from "./reasoning/policy-graph.js";
-import { runGuardChain } from "./reasoning/guard-chain.js";
+import { applyDecision } from "./reasoning/guard-chain.js";
 import { requestDecision, servToolsSupported, resolvedBaseUrl } from "./reasoning/serv-client.js";
 import { fetchCurrentYields } from "./vaults/yield-source.js";
 import type { Allocation, VaultYield } from "./vaults/types.js";
@@ -18,7 +18,6 @@ import {
   writeReceipt,
   type Receipt,
   type ReceiptAnchor,
-  type SettlementMode,
 } from "./storage/receipts.js";
 import { anchorReceiptHash, anchoringEnabled, explorerUrl } from "./storage/anchor.js";
 
@@ -29,10 +28,6 @@ function currentAllocation(modelId: string, policy: Policy): Allocation {
   return last
     ? last.post_allocation
     : staticBaselineAllocation(policy.vaults.map((v) => v.vaultId));
-}
-
-function settlementMode(): SettlementMode {
-  return process.env.WALLET_PRIVATE_KEY ? "onchain" : "accounting";
 }
 
 export interface EpochOutcome {
@@ -68,13 +63,10 @@ export async function runEpochForModel(params: {
     }),
   });
 
-  const guard = runGuardChain(result.decision.target_allocation, policy);
-  // A failed guard check holds the previous allocation. The rejected proposal
-  // is still recorded in the receipt via policy_violations.
-  const postAllocation =
-    guard.passed && result.decision.should_rebalance
-      ? result.decision.target_allocation
-      : preAllocation;
+  const applied = applyDecision(result.decision, preAllocation, yieldsBps, policy);
+  // Any violation — caps or rebalance spread — holds the previous allocation.
+  // The rejected proposal is still recorded in the receipt via policy_violations.
+  const postAllocation = applied.postAllocation;
 
   const preYield = weightedYieldBps(preAllocation, yieldsBps);
   const postYield = weightedYieldBps(postAllocation, yieldsBps);
@@ -83,7 +75,10 @@ export async function runEpochForModel(params: {
     epoch,
     model: model.id,
     timestamp: new Date().toISOString(),
-    settlement_mode: settlementMode(),
+    // The scheduler never settles capital; settlement is a separate manual
+    // step (scripts/settle.ts) that does not touch receipts. Anchoring of
+    // the receipt hash itself is independent and stays onchain.
+    settlement_mode: "accounting",
     pre_allocation: preAllocation,
     post_allocation: postAllocation,
     observed_yields_bps: yieldsBps,
@@ -105,8 +100,8 @@ export async function runEpochForModel(params: {
     pre_weighted_yield_bps: preYield,
     post_weighted_yield_bps: postYield,
     yield_delta_bps: postYield - preYield,
-    policy_checks_passed: guard.passed,
-    policy_violations: guard.violations,
+    policy_checks_passed: applied.passed,
+    policy_violations: applied.violations,
     rationale: result.decision.rationale,
     confidence: result.decision.confidence,
     risk_score: result.decision.risk_score,
@@ -135,7 +130,7 @@ export async function runEpochForModel(params: {
     receiptPath,
     rebalanced: !allocationsEqual(preAllocation, postAllocation),
     yieldDeltaBps: receipt.yield_delta_bps,
-    guardPassed: guard.passed,
+    guardPassed: applied.passed,
     anchorTxHash: anchor?.tx_hash ?? null,
   };
 }
@@ -179,6 +174,7 @@ export async function runTournamentEpoch(
   }
 
   const outcomes: EpochOutcome[] = [];
+  const failures: string[] = [];
   for (const model of models) {
     const epoch = latestEpoch(model.id) + 1;
     onProgress(`Requesting decision from ${model.model}`, "info", model.id);
@@ -195,14 +191,23 @@ export async function runTournamentEpoch(
     } catch (err) {
       // One arm failing must not abort the tournament; the others still run.
       const message = (err as Error).message;
+      failures.push(message);
       console.error(`[${model.id}] epoch ${epoch} failed: ${message}`);
       onProgress(message, "error", model.id);
     }
   }
 
   if (outcomes.length === 0) {
+    // "fetch failed" is what `fetch()` reports for any failure below HTTP:
+    // DNS, TCP, TLS. Pointing at the API key when the request never left the
+    // machine sends the operator looking in the wrong place.
+    const allTransport = failures.length > 0 && failures.every((m) => /fetch failed/i.test(m));
     throw new Error(
-      `Every arm failed this epoch. First check that SERV_API_KEY is set and valid.`,
+      allTransport
+        ? `Every arm failed this epoch: no request reached ${resolvedBaseUrl()}. ` +
+          `The connection was refused or timed out before any response — check network reachability, ` +
+          `not the API key. On a slow or high-latency link, raise NET_CONNECT_ATTEMPT_TIMEOUT_MS.`
+        : `Every arm failed this epoch. First check that SERV_API_KEY is set and valid.`,
     );
   }
 

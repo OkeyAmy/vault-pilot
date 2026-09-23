@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { runGuardChain, spreadClearsThreshold } from "../../src/reasoning/guard-chain.js";
-import type { Policy } from "../../src/reasoning/policy-graph.js";
+import { applyDecision, runGuardChain, spreadClearsThreshold } from "../../src/reasoning/guard-chain.js";
+import type { Decision, Policy } from "../../src/reasoning/policy-graph.js";
 
 const policy: Policy = {
   policy_version: 1,
@@ -87,5 +87,69 @@ describe("spreadClearsThreshold", () => {
 
   it("returns false when there are no yields at all", () => {
     expect(spreadClearsThreshold({ buidl: 1.0 }, {}, policy)).toBe(false);
+  });
+});
+
+describe("applyDecision", () => {
+  const yields = { buidl: 480, usdy: 545, "maple-usdc": 610 };
+
+  function decision(partial: Partial<Decision> = {}): Decision {
+    return {
+      schema_version: 1,
+      should_rebalance: true,
+      target_allocation: { buidl: 0.4, usdy: 0.3, "maple-usdc": 0.3 },
+      rationale: "test",
+      confidence: 0.5,
+      risk_score: 0.5,
+      ...partial,
+    };
+  }
+
+  it("applies a reallocation when the spread clears the threshold", () => {
+    const pre = { buidl: 1.0 };
+    const applied = applyDecision(decision(), pre, yields, policy);
+    expect(applied.passed).toBe(true);
+    expect(applied.postAllocation).toEqual({ buidl: 0.4, usdy: 0.3, "maple-usdc": 0.3 });
+  });
+
+  it("holds the previous allocation and records a violation when the spread fails", () => {
+    // current weighted = 600, best = 610, spread = 10bps < 15bps
+    const tight = { buidl: 600, usdy: 600, "maple-usdc": 610 };
+    const pre = { buidl: 1.0 };
+    const target = { buidl: 0.4, usdy: 0.4, "maple-usdc": 0.2 };
+    const applied = applyDecision(decision({ target_allocation: target }), pre, tight, policy);
+    expect(applied.passed).toBe(false);
+    expect(applied.postAllocation).toEqual(pre);
+    expect(applied.violations).toHaveLength(1);
+    expect(applied.violations[0]).toContain("min_rebalance_spread_bps");
+  });
+
+  it("skips the spread check when should_rebalance is false", () => {
+    const tight = { buidl: 600, usdy: 600, "maple-usdc": 610 };
+    const pre = { buidl: 1.0 };
+    const applied = applyDecision(decision({ should_rebalance: false }), pre, tight, policy);
+    expect(applied.passed).toBe(true);
+    expect(applied.postAllocation).toEqual(pre);
+  });
+
+  it("skips the spread check when the allocation would not actually change", () => {
+    const tight = { buidl: 600, usdy: 600, "maple-usdc": 610 };
+    const pre = { buidl: 0.4, usdy: 0.4, "maple-usdc": 0.2 };
+    const applied = applyDecision(decision({ target_allocation: { ...pre } }), pre, tight, policy);
+    expect(applied.passed).toBe(true);
+    expect(applied.postAllocation).toEqual(pre);
+  });
+
+  it("still rejects a cap violation regardless of the spread", () => {
+    const pre = { buidl: 1.0 };
+    const applied = applyDecision(
+      decision({ target_allocation: { buidl: 0.9, usdy: 0.1 } }),
+      pre,
+      yields,
+      policy,
+    );
+    expect(applied.passed).toBe(false);
+    expect(applied.postAllocation).toEqual(pre);
+    expect(applied.violations.some((v) => v.includes("max_allocation_per_vault"))).toBe(true);
   });
 });

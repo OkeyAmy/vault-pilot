@@ -8,6 +8,7 @@
  * calldata is a receipt hash. It never holds or moves treasury capital. Keep
  * it separate from any key that does.
  */
+import "../src/net-tuning.js";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, http, formatEther } from "viem";
 import { baseSepolia, bscTestnet, sepolia, arbitrumSepolia } from "viem/chains";

@@ -1,3 +1,4 @@
+import "./net-tuning.js";
 import { runTournamentEpoch } from "./epoch-runner.js";
 
 const outcomes = await runTournamentEpoch();

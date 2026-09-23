@@ -61,7 +61,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </span>
         </div>
       </header>
-      <main className={isHome ? "" : "mx-auto max-w-6xl px-6 py-8"}>{children}</main>
+      <main className={isHome ? "" : "mx-auto max-w-7xl px-6 py-8"}>{children}</main>
     </div>
   );
 }

@@ -23,6 +23,9 @@ export interface LeaderboardRow {
   current_allocation: Record<string, number>;
   /** Most recent reasoning, so the table can show why, not only how much. */
   latest_rationale: string;
+  latest_epoch: number;
+  /** Last ≤12 per-epoch yield deltas, oldest first — drives the epoch tape. */
+  recent_yield_deltas_bps: number[];
   receipts_anchored: number;
   last_epoch_at: string;
 }
@@ -52,6 +55,8 @@ function summarize(modelId: string, receipts: SignedReceipt[]): LeaderboardRow |
     mean_risk_score: receipts.reduce((s, r) => s + r.risk_score, 0) / receipts.length,
     current_allocation: last.post_allocation,
     latest_rationale: last.rationale,
+    latest_epoch: last.epoch,
+    recent_yield_deltas_bps: receipts.slice(-12).map((r) => r.yield_delta_bps),
     receipts_anchored: receipts.filter((r) => r.anchor).length,
     last_epoch_at: last.timestamp,
   };

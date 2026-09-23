@@ -146,6 +146,54 @@ pnpm wallet:status       # confirms balance and chain
 The anchoring wallet only ever signs zero-value transactions carrying a hash.
 It never holds treasury capital.
 
+### Deploy — one process, everything autonomous
+
+The production shape is a **single process**: it serves the built interface,
+the JSON API, and the epoch scheduler. Visitors see the site; the scheduler
+keeps deciding, anchoring, and writing receipts on its own clock — no second
+service, no manual triggers.
+
+```bash
+pnpm build:all      # compile agent + build the interface once
+# in .env:  API_HOST=0.0.0.0   and  ANCHOR_PRIVATE_KEY=…  for onchain proof
+pnpm start          # site + API + autonomous scheduler on one port
+```
+
+Open `http://<host>:8787` — deep links (`/receipts`, `/policy`) work on
+reload, and the leaderboard updates as epochs land. Local development still
+uses `pnpm dev` (Vite on 5173 proxying `/api` to the agent).
+
+The site needs a **persistent** host (VPS, Fly, Railway, a long-lived VM):
+receipts live on disk and the scheduler must survive restarts. Static-only
+hosts cannot run the loop.
+
+#### Render
+
+`render.yaml` describes the whole service, so the dashboard does the rest:
+**New → Blueprint**, point it at the repository, and fill in the three values
+the file deliberately withholds — `SERV_API_KEY`, `TOURNAMENT_MODELS`, and
+`ANCHOR_PRIVATE_KEY` (omit the last to run without onchain proof). Everything
+afterwards — logs, redeploys, changing a key — is a browser tab.
+
+Two details the blueprint encodes and the platform will not infer:
+
+- **A disk, mounted at `/var/data`.** `RECEIPTS_ROOT` and `IXS_HISTORY_PATH`
+  point inside it. Without the disk, each redeploy erases every receipt and
+  the tournament restarts at epoch 1.
+- **A paid instance.** Render suspends a free service once traffic stops; a
+  suspended agent stops thinking, and the missing epochs show up as gaps in
+  the tape.
+
+Receipts are gitignored, so a fresh deploy begins with an empty tournament and
+builds its own record from the first epoch forward. The IXS vault reports
+`apyKnown: false` until the disk has accumulated enough share-price
+observations to measure a rate — the same cold start any new checkout has.
+
+Serverless platforms (Vercel, Netlify Functions, Cloudflare Workers) cannot
+host this: there is no process between requests to run the scheduler, function
+runtimes cap out well below an epoch, and there is no writable disk for the
+receipts.
+
 ---
 
 ## How one decision is made
@@ -232,8 +280,11 @@ scheduler is the normal driver, so nothing is lost by keeping it shut.
 | `SETTLEMENT_PRIVATE_KEY` | — | Enables **real** IXS settlement |
 | `SETTLEMENT_MAX_PER_TX` | `10` | Ceiling per settlement transaction |
 | `OPERATOR_TOKEN` | — | Required for manual epoch triggering |
-| `API_HOST` / `API_PORT` | `127.0.0.1` / `8787` | API bind |
+| `API_HOST` / `API_PORT` | `127.0.0.1` / `8787` | API bind. `API_PORT` unset falls back to `PORT` |
 | `UI_ORIGIN` | `localhost:5173` | Allowed browser origin |
+| `RECEIPTS_ROOT` | `receipts` | Where signed receipts are written |
+| `IXS_HISTORY_PATH` | `data/ixs-share-price-history.json` | IXS share-price observations |
+| `NET_CONNECT_ATTEMPT_TIMEOUT_MS` | `5000` | Per-address TCP handshake budget |
 
 ---
 

@@ -8,6 +8,7 @@
  * These move real funds on BNB Chain mainnet — IXS publishes no testnet
  * vault. Nothing here runs automatically: the scheduler never settles.
  */
+import "../src/net-tuning.js";
 import { formatEther } from "viem";
 import { loadPolicy } from "../src/config/load-policy.js";
 import {

@@ -222,3 +222,345 @@ textarea {
     transform: translateY(-6px);
   }
 }
+
+/* ---- Tournament standings ------------------------------------------------ */
+
+.standings-shell {
+  border: 1px solid var(--color-rule);
+  background: var(--color-panel);
+  overflow-x: auto;
+}
+
+.standings-grid {
+  min-width: 720px;
+}
+
+.sg-row {
+  display: grid;
+  grid-template-columns: 56px minmax(100px, 1fr) minmax(120px, 1.1fr) minmax(150px, 1.5fr) 64px 100px 76px 128px;
+  gap: 8px;
+  align-items: center;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--color-edge);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    outline-color 120ms ease;
+}
+
+.sg-row:last-child {
+  border-bottom: 0;
+}
+
+.sg-row:not(.sg-head):nth-child(even) {
+  background: rgba(20, 20, 20, 0.015);
+}
+
+.sg-row:not(.sg-head):hover {
+  background: #eef1fa;
+}
+
+.sg-row.sg-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #e0ddd5;
+  border-bottom: 1px solid var(--color-rule);
+  color: var(--color-muted);
+  font-weight: 500;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  cursor: default;
+}
+
+.sg-row.sg-head:hover {
+  background: #e0ddd5;
+}
+
+.sg-rank {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+}
+
+.sg-row.medal-1 {
+  box-shadow: inset 5px 0 0 #c6921c;
+}
+
+.sg-row.medal-2 {
+  box-shadow: inset 5px 0 0 #7d8796;
+}
+
+.sg-row.medal-3 {
+  box-shadow: inset 5px 0 0 #9b6a36;
+}
+
+.sg-row.is-selected {
+  position: relative;
+  z-index: 1;
+  outline: 3px solid var(--color-accent);
+  outline-offset: -3px;
+  background: #eef1fa;
+}
+
+.sg-row.is-selected:hover {
+  background: #eef1fa;
+}
+
+.sg-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Arm dossier (selected row filed below the ledger) ------------------- */
+
+.dossier {
+  margin-top: 12px;
+  border: 1px solid var(--color-rule);
+  background: var(--color-panel);
+  animation: dossier-in 220ms ease;
+}
+
+@keyframes dossier-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dossier {
+    animation: none;
+  }
+}
+
+.dossier-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--color-rule);
+  background: #e0ddd5;
+}
+
+.dossier-rank {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+}
+
+.dossier-head strong {
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
+.dossier-meta {
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+
+.dossier-tag {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--color-edge);
+  background: #fbfaf7;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--color-muted);
+}
+
+.dossier-body {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+@media (min-width: 1024px) {
+  .dossier-body {
+    grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+  }
+}
+
+.dossier-col-main {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.dossier-col-side {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.dossier-rules {
+  margin: 0;
+  border-top: 1px dashed var(--color-edge);
+  border-bottom: 0;
+  padding: 8px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+}
+
+.stat-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.stat-tile {
+  border: 1px solid var(--color-edge);
+  background: #fbfaf7;
+  padding: 0.5rem 0.65rem;
+}
+
+.stat-tile span {
+  display: block;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--color-muted);
+}
+
+.stat-tile strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Per-epoch tape: midline tiles, fill grows up (gain) or down (loss). */
+.tape-grid {
+  border: 1px solid var(--color-edge);
+  background: #fbfaf7;
+  padding: 7px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.tape-tile {
+  position: relative;
+  min-height: 74px;
+  border: 1px solid var(--color-edge);
+  overflow: hidden;
+  background: #eceae4;
+  padding: 6px;
+}
+
+.tape-label {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 5px;
+  z-index: 2;
+  display: grid;
+  gap: 3px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.tape-label em {
+  font-style: normal;
+  color: var(--color-muted);
+}
+
+.tape-tile.up .tape-label strong {
+  color: var(--color-good);
+}
+
+.tape-tile.down .tape-label strong {
+  color: var(--color-bad);
+}
+
+.tape-tile.flat .tape-label strong {
+  color: var(--color-muted);
+}
+
+.tape-midline {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  top: 50%;
+  z-index: 3;
+  border-top: 1px dashed rgba(20, 20, 20, 0.4);
+}
+
+.tape-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  height: var(--fill-h);
+}
+
+.tape-fill.up {
+  bottom: 50%;
+  background: rgba(10, 141, 73, 0.3);
+}
+
+.tape-fill.down {
+  top: 50%;
+  background: rgba(192, 57, 43, 0.26);
+}
+
+/* The "why": latest reasoning as an accent story card, not squeezed table text. */
+.why-card {
+  border: 1px solid var(--color-edge);
+  border-left: 4px solid var(--color-accent);
+  background: #fbfaf7;
+  padding: 0.75rem 0.85rem;
+}
+
+.why-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.why-head strong {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--ink, var(--color-ink));
+}
+
+.why-head span {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--color-muted);
+}
+
+.why-card p {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.65;
+  color: var(--color-ink);
+}
+
+.arm-rules {
+  display: grid;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: var(--color-muted);
+}

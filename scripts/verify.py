@@ -25,7 +25,7 @@ import json
 import os
 import sys
 
-RECEIPTS_ROOT = "receipts"
+RECEIPTS_ROOT = os.environ.get("RECEIPTS_ROOT", "receipts")
 POLICY_PATH = os.path.join("src", "config", "policy.yaml")
 
 

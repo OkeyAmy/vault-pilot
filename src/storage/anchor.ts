@@ -1,4 +1,11 @@
-import { createWalletClient, createPublicClient, http, defineChain, type Hex } from "viem";
+import {
+  createWalletClient,
+  createPublicClient,
+  http,
+  defineChain,
+  nonceManager,
+  type Hex,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia, bscTestnet, sepolia, arbitrumSepolia } from "viem/chains";
 
@@ -59,7 +66,15 @@ function account() {
   if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
     throw new AnchorError("ANCHOR_PRIVATE_KEY must be a 32-byte hex private key.");
   }
-  return privateKeyToAccount(key);
+  // An epoch anchors one transaction per arm in quick succession, all from
+  // this single address. Left to itself viem asks the RPC for the pending
+  // nonce before each send, and a load-balanced public endpoint will happily
+  // serve a stale count to the second caller — two transactions then claim
+  // the same nonce, one is mined and the other is orphaned in the mempool
+  // forever, surfacing as "Transaction receipt ... could not be found".
+  // The nonce manager keeps the sequence in this process instead, so the
+  // RPC is consulted once and every later send increments locally.
+  return privateKeyToAccount(key, { nonceManager });
 }
 
 function rpcUrl(): string {
